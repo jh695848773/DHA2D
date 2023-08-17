@@ -1,0 +1,8 @@
+prefix=/home/chiang/ros1/DHA2D/devel
+
+Name: DHA2D
+Description: Description of DHA2D
+Version: 0.0.0
+Cflags: -I/home/chiang/ros1/DHA2D/src/DHA2D/include
+Libs: -L${prefix}/lib 
+Requires: 

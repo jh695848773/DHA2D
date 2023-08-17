@@ -1,0 +1,2 @@
+DHA2D
+-DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DCMAKE_BUILD_TYPE=Release -DCATKIN_DEVEL_PREFIX=/home/chiang/ros1/DHA2D/devel -DCMAKE_INSTALL_PREFIX=/home/chiang/ros1/DHA2D/install -G Unix Makefiles

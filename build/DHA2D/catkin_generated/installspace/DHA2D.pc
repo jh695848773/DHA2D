@@ -1,0 +1,8 @@
+prefix=/home/chiang/ros1/DHA2D/install
+
+Name: DHA2D
+Description: Description of DHA2D
+Version: 0.0.0
+Cflags: -I${prefix}/include
+Libs: -L${prefix}/lib 
+Requires: 
