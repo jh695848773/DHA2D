@@ -18,7 +18,7 @@ inline constexpr int AE_CheckSteps = 15;
 
 inline constexpr double MaxAE_Dist = 3.0;
 
-inline constexpr unsigned int TimeDim = 1;
+inline constexpr unsigned int TimeDim = 0;
 
 inline constexpr unsigned int SpaceDim = 2;
 
@@ -307,9 +307,9 @@ inline bool StateVertex::checkCollision(std::shared_ptr<const voxel_map_tool> ma
         return true;
     }
 
-    const double estimated_dist = std::max(prev_ptr->V.norm(), V.norm()) * dT + 5;
+    const double estimated_dist = std::max(prev_ptr->V.norm(), V.norm()) * dT;
 
-    int check_steps = (int)(estimated_dist / map_resolution);
+    int check_steps = (int)(estimated_dist / map_resolution) + 10;
 
     if (check_steps < 1)
         check_steps = 1;
