@@ -10,18 +10,26 @@ double map_y_size = 10.0; // m
 class Task
 {
   public:
-    Task(ros::NodeHandle &_nh, std::string _map_vis_name = "vis_map") : Map(_nh, _map_vis_name)
+    Task(ros::NodeHandle &_nh, std::string _map_vis_name = "vis_map", std::string _path_vis_name = "path")
+        : path2show(_nh, _path_vis_name)
     {
-        Map.initGridMap(space_resolution, Eigen::Vector2d{map_x_size, map_y_size}, Eigen::Vector2d::Zero());
+        MapPtr = std::make_shared<voxel_map_tool>(_nh, _map_vis_name);
+        MapPtr->initGridMap(space_resolution, Eigen::Vector2d{map_x_size, map_y_size}, Eigen::Vector2d::Zero());
         setObs_sub = _nh.subscribe("/initialpose", 10, &Task::setObsCB, this);
+        setGoal_sub = _nh.subscribe("/move_base_simple/goal", 10, &Task::setGoalCB, this);
     };
 
     void loop();
     void setObsCB(geometry_msgs::PoseWithCovarianceStamped::ConstPtr msg_ptr);
+    void setGoalCB(geometry_msgs::PoseStamped::ConstPtr msg_ptr);
 
   private:
-    voxel_map_tool Map;
+    std::shared_ptr<voxel_map_tool> MapPtr;
     ros::Subscriber setObs_sub;
+    ros::Subscriber setGoal_sub;
+    bool has_goal = false;
+    Eigen::Vector2d Goal_P;
+    HybridAStar::V_A_Traj path2show;
 };
 
 int main(int argc, char *argv[])
@@ -38,11 +46,30 @@ int main(int argc, char *argv[])
 
 void Task::loop()
 {
+    HybridAStar::Planner planner;
+    double freq = 10.0;
+    ros::Rate r(freq);
+
     while (ros::ok())
     {
-        double freq = 10.0;
-        ros::Rate r(freq);
-        Map.vis_map();
+
+        MapPtr->vis_map();
+
+        if (has_goal == true)
+        {
+            std::vector<HybridAStar::StateVertex> path;
+            Eigen::Matrix<double, HybridAStar::N_coeff * HybridAStar::N_poly, HybridAStar::SpaceDim> C;
+            double AE_dT;
+
+            bool isSuccess = planner.SearchByHash(MapPtr, Eigen::Vector2d{1.0, 1.0}, Eigen::Vector2d{0.0, 0.0}, Goal_P);
+            if (isSuccess)
+            {
+                planner.getPath(path, C, AE_dT);
+                path2show.get(path, C, AE_dT);
+                path2show.vis_path();
+            }
+        }
+
         ros::spinOnce();
         r.sleep();
     }
@@ -53,5 +80,19 @@ void Task::setObsCB(geometry_msgs::PoseWithCovarianceStamped::ConstPtr msg_ptr)
     double x = msg_ptr->pose.pose.position.x;
     double y = msg_ptr->pose.pose.position.y;
 
-    Map.setObs(x, y);
+    for(int i = -1; i <= 1; ++i)
+    {
+        for(int j = -1; j <= 1; ++j)
+        {
+            MapPtr->setObs(x + i * space_resolution, y + j * space_resolution);
+        }
+    }
+
+}
+
+void Task::setGoalCB(geometry_msgs::PoseStamped::ConstPtr msg_ptr)
+{
+    Goal_P(0) = msg_ptr->pose.position.x;
+    Goal_P(1) = msg_ptr->pose.position.y;
+    has_goal = true;
 }

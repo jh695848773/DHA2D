@@ -581,7 +581,7 @@ inline bool V_A_Traj::vis_path()
 
     trajMarkerSect.header.stamp = ros::Time::now();
     trajMarkerSect.type = visualization_msgs::Marker::LINE_LIST;
-    trajMarkerSect.header.frame_id = "world_enu";
+    trajMarkerSect.header.frame_id = "map";
     trajMarkerSect.pose.orientation.w = 1.00;
     trajMarkerSect.action = visualization_msgs::Marker::ADD;
     trajMarkerSect.color.r = 0.00;
@@ -616,7 +616,7 @@ inline bool V_A_Traj::vis_path()
 
     trajMarkerSect.header.stamp = ros::Time::now();
     trajMarkerSect.type = visualization_msgs::Marker::LINE_LIST;
-    trajMarkerSect.header.frame_id = "world_enu";
+    trajMarkerSect.header.frame_id = "map";
     trajMarkerSect.pose.orientation.w = 1.00;
     trajMarkerSect.action = visualization_msgs::Marker::ADD;
     trajMarkerSect.color.r = 0.00;

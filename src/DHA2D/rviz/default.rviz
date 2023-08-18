@@ -55,10 +55,10 @@ Visualization Manager:
       Reference Frame: "map"
       Value: true
 
-    - Class: rviz/Marker
+    - Class: rviz/MarkerArray
       Enabled: true
-      Marker Topic: "/points"
-      Name: Marker
+      Marker Topic: "/path"
+      Name: MarkerArray
       Namespaces:
         {}
       Queue Size: 100

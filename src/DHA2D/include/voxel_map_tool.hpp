@@ -26,14 +26,13 @@ class voxel_map_tool
         }
     };
 
-    bool initGridMap(const double &_resolution, const Eigen::Vector2d &map_size_xz,
-                     const Eigen::Vector2d &global_xy_l);
+    bool initGridMap(const double &_resolution, const Eigen::Vector2d &map_size_xz, const Eigen::Vector2d &global_xy_l);
     bool setObs(const double coord_x, const double coord_y);
 
     // All points out of boundary are considered Obstacles
     bool isObsFree(const double coord_x, const double coord_y) const;
     bool isObsFree(int array_idx) const;
-    bool isObsFree(Eigen::Vector2d pt) const;
+    bool isObsFree(const Eigen::Vector2d &pt) const;
 
     void vis_map() const;
 
@@ -138,7 +137,6 @@ inline bool voxel_map_tool::initGridMap(const double &_resolution, const Eigen::
 
 inline bool voxel_map_tool::setObs(const double coord_x, const double coord_y)
 {
-
     int idx_x = static_cast<int>((coord_x - x_offest) * inv_resolution);
     int idx_y = static_cast<int>((coord_y - y_offest) * inv_resolution);
 
@@ -152,15 +150,8 @@ inline bool voxel_map_tool::setObs(const double coord_x, const double coord_y)
 
 inline bool voxel_map_tool::isObsFree(const double coord_x, const double coord_y) const
 {
-    Eigen::Vector2d pt;
-    Eigen::Vector2i idx;
-
-    pt(0) = coord_x;
-    pt(1) = coord_y;
-    idx = Coord2GridIdx(pt);
-
-    int idx_x = idx(0);
-    int idx_y = idx(1);
+    int idx_x = (coord_x - x_offest) * inv_resolution;
+    int idx_y = (coord_y - y_offest) * inv_resolution;
 
     return (idx_x >= 0 && idx_x < X_SIZE && idx_y >= 0 && idx_y < Y_SIZE &&
             (data[GridIdx2Array(idx_x, idx_y)] == Unoccupied));
@@ -171,14 +162,10 @@ inline bool voxel_map_tool::isObsFree(int array_idx) const
     return (array_idx >= 0 && array_idx < XY_SIZE) && (data[array_idx] == Unoccupied);
 }
 
-inline bool voxel_map_tool::isObsFree(Eigen::Vector2d pt) const
+inline bool voxel_map_tool::isObsFree(const Eigen::Vector2d &pt) const
 {
-    Eigen::Vector2i idx;
-
-    idx = Coord2GridIdx(pt);
-
-    int idx_x = idx(0);
-    int idx_y = idx(1);
+    int idx_x = (pt(0) - x_offest) * inv_resolution;
+    int idx_y = (pt(1) - y_offest) * inv_resolution;
 
     return (idx_x >= 0 && idx_x < X_SIZE && idx_y >= 0 && idx_y < Y_SIZE &&
             (data[GridIdx2Array(idx_x, idx_y)] == Unoccupied));
@@ -203,11 +190,11 @@ inline void voxel_map_tool::vis_map() const
     msg2pub.info.origin.orientation.y = 0.0;
     msg2pub.info.origin.orientation.z = 0.0;
 
-    for(int j = 0; j < Y_SIZE; ++j)
+    for (int j = 0; j < Y_SIZE; ++j)
     {
-        for(int i = 0; i < X_SIZE; ++i)
+        for (int i = 0; i < X_SIZE; ++i)
         {
-            if(data[GridIdx2Array(i, j)] == Occupied)
+            if (data[GridIdx2Array(i, j)] == Occupied)
             {
                 msg2pub.data.push_back(99);
             }
