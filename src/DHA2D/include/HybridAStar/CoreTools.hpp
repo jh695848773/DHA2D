@@ -3,7 +3,7 @@
 
 #include <Eigen/Core>
 
-#include "voxel_map_tool.hpp"
+#include "voxel_map_tool2D.hpp"
 
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
@@ -19,6 +19,7 @@ inline constexpr int AE_CheckSteps = 15;
 inline constexpr double MaxAE_Dist = 3.0;
 
 inline constexpr unsigned int TimeDim = 0;
+static_assert(TimeDim == 0 || TimeDim == 1, "TimeDim must be 0 or 1");
 
 inline constexpr unsigned int SpaceDim = 2;
 
@@ -78,7 +79,8 @@ struct StateVertex
 
     void getPathFromHere(std::vector<StateVertex> &path_points);
 
-    double estimateHeuristic(const Eigen::VectorXd &StartState, const Eigen::VectorXd &GoalState, double &optimal_time);
+    double estimateHeuristic(const Eigen::Matrix<double, SpaceDim * 2, 1> &StartState,
+                             const Eigen::Matrix<double, SpaceDim * 2, 1> &GoalState, double &optimal_time);
 
     std::vector<double> cubic(double a, double b, double c, double d);
     std::vector<double> quartic(double a, double b, double c, double d, double e);
@@ -112,21 +114,27 @@ class StateVertexPtrGrid_hash
         }
     }
 
-    bool find(const Eigen::Vector2d &coord, const double &time,
-              std::unordered_map<Eigen::Vector3i, StateVertex *, matrix_hash<Eigen::Vector3i>>::iterator &iter);
+    bool find(const Eigen::Matrix<double, SpaceDim, 1> &coord, const double &time,
+              std::unordered_map<Eigen::Matrix<int, SpaceDim + TimeDim, 1>, StateVertex *,
+                                 matrix_hash<Eigen::Matrix<int, SpaceDim + TimeDim, 1>>>::iterator &iter);
 
-    void insert(const Eigen::Vector2d &coord, const double &time, StateVertex *ptr); // coord: x, y, time
+    void insert(const Eigen::Matrix<double, SpaceDim, 1> &coord, const double &time,
+                StateVertex *ptr); // coord: x, y, z, ... time
 
-    bool initGrid(const double &_space_resolution, const double &_time_resolution, const Eigen::Vector3d &global_xyt_l);
+    bool initGrid(const double &_space_resolution, const double &_time_resolution,
+                  const Eigen::Matrix<double, SpaceDim, 1> &global_lower_point);
 
   protected:
-    std::unordered_map<Eigen::Vector3i, StateVertex *, matrix_hash<Eigen::Vector3i>> DataPtrTable;
+    std::unordered_map<Eigen::Matrix<int, SpaceDim + TimeDim, 1>, StateVertex *,
+                       matrix_hash<Eigen::Matrix<int, SpaceDim + TimeDim, 1>>>
+        DataPtrTable;
 
     double space_resolution;
     double inv_space_resolution;
     double time_resolution;
     double inv_time_resolution;
-    double x_offest, y_offest, t_offest;
+    Eigen::Matrix<double, SpaceDim, 1> space_offset;
+    double t_offest;
 };
 
 class V_A_Traj
@@ -147,16 +155,16 @@ class V_A_Traj
     void get(const std::vector<StateVertex> &state_path_points,
              const Eigen::Matrix<double, N_coeff * N_poly, SpaceDim> _C, const double &_C_durr);
 
-    Eigen::Vector2d getPosition(double t);
+    Eigen::Matrix<double, SpaceDim, 1> getPosition(double t);
 
     bool vis_path();
 
   private:
     struct State
     {
-        Eigen::Vector2d P;
-        Eigen::Vector2d V;
-        Eigen::Vector2d at_1;
+        Eigen::Matrix<double, SpaceDim, 1> P;
+        Eigen::Matrix<double, SpaceDim, 1> V;
+        Eigen::Matrix<double, SpaceDim, 1> at_1;
         double dT;
     };
 
@@ -172,14 +180,20 @@ class V_A_Traj
 };
 
 inline bool StateVertexPtrGrid_hash::find(
-    const Eigen::Vector2d &coord, const double &time,
-    std::unordered_map<Eigen::Vector3i, StateVertex *, matrix_hash<Eigen::Vector3i>>::iterator &iter)
+    const Eigen::Matrix<double, SpaceDim, 1> &coord, const double &time,
+    std::unordered_map<Eigen::Matrix<int, SpaceDim + TimeDim, 1>, StateVertex *,
+                       matrix_hash<Eigen::Matrix<int, SpaceDim + TimeDim, 1>>>::iterator &iter)
 {
-    Eigen::Vector3i idx;
+    Eigen::Matrix<int, SpaceDim + TimeDim, 1> idx;
 
-    idx(0) = (coord(0) - x_offest) * inv_space_resolution;
-    idx(1) = (coord(1) - y_offest) * inv_space_resolution;
-    idx(2) = (time - t_offest) * inv_time_resolution;
+    // From coordinate to grid index
+    for (int i = 0; i < SpaceDim; ++i)
+        idx(i) = (coord(i) - space_offset(i)) * inv_space_resolution;
+
+    if constexpr (TimeDim == 1)
+    {
+        idx(SpaceDim) = (time - t_offest) * inv_time_resolution;
+    }
 
     if ((iter = DataPtrTable.find(idx)) == DataPtrTable.cend())
         return false;
@@ -187,33 +201,35 @@ inline bool StateVertexPtrGrid_hash::find(
         return true;
 }
 
-inline void StateVertexPtrGrid_hash::insert(const Eigen::Vector2d &coord, const double &time, StateVertex *ptr)
+inline void StateVertexPtrGrid_hash::insert(const Eigen::Matrix<double, SpaceDim, 1> &coord, const double &time,
+                                            StateVertex *ptr)
 {
-    Eigen::Vector3i idx;
+    Eigen::Matrix<int, SpaceDim + TimeDim, 1> idx;
 
-    idx(0) = (coord(0) - x_offest) * inv_space_resolution;
-    idx(1) = (coord(1) - y_offest) * inv_space_resolution;
-    idx(2) = (time - t_offest) * inv_time_resolution;
+    // From coordinate to grid index
+    for (int i = 0; i < SpaceDim; ++i)
+        idx(i) = (coord(i) - space_offset(i)) * inv_space_resolution;
+
+    if constexpr (TimeDim == 1)
+    {
+        idx(SpaceDim) = (time - t_offest) * inv_time_resolution;
+    }
 
     DataPtrTable.insert(std::make_pair(idx, ptr));
 }
 
 inline bool StateVertexPtrGrid_hash::initGrid(const double &_space_resolution, const double &_time_resolution,
-                                              const Eigen::Vector3d &global_xyt_l)
+                                              const Eigen::Matrix<double, SpaceDim, 1> &global_lower_point)
 {
     space_resolution = _space_resolution;
     time_resolution = _time_resolution;
     inv_space_resolution = 1.0 / space_resolution;
     inv_time_resolution = 1.0 / time_resolution;
 
-    if (TimeDim == 1)
-    {
-        inv_time_resolution = 0.0;
-    }
+    for (int i = 0; i < SpaceDim; ++i)
+        space_offset(i) = global_lower_point(i);
 
-    x_offest = global_xyt_l(0);
-    y_offest = global_xyt_l(1);
-    t_offest = global_xyt_l(2);
+    t_offest = 0.0;
 
     return true;
 }
@@ -277,10 +293,10 @@ inline bool StateVertex::simForward(StateVertex &prev, const Eigen::Matrix<doubl
 
     cost2come = prev.cost2come + (at_1.norm() + time_weight) * dT; // Estimated energy + time wasted
 
-    Eigen::VectorXd StartState(2 * SpaceDim);
+    Eigen::Matrix<double, 2 * SpaceDim, 1> StartState(2 * SpaceDim);
     StartState.head(SpaceDim) = P;
     StartState.tail(SpaceDim) = V;
-    Eigen::VectorXd GoalState(2 * SpaceDim);
+    Eigen::Matrix<double, 2 * SpaceDim, 1> GoalState(2 * SpaceDim);
     GoalState.head(SpaceDim) = Goal_P;
     GoalState.tail(SpaceDim) = Goal_V;
 
@@ -317,7 +333,7 @@ inline bool StateVertex::checkCollision(std::shared_ptr<const voxel_map_tool> ma
     const double IncreT = dT / check_steps;
     for (double t = IncreT; t < dT + 1e-10; t += IncreT)
     {
-        Eigen::Vector2d current_position = (prev_ptr->P + prev_ptr->V * t + 0.5 * at_1 * t * t);
+        Eigen::Matrix<double, SpaceDim, 1> current_position = (prev_ptr->P + prev_ptr->V * t + 0.5 * at_1 * t * t);
 
         if (map_ptr->isObsFree(current_position) == false)
         {
@@ -349,10 +365,10 @@ inline bool StateVertex::setState(const Eigen::Matrix<double, SpaceDim, 1> &Curr
 
     cost2come = 0.0; // T + ax^2 + ay^2 + az^2
 
-    Eigen::VectorXd StartState(2 * SpaceDim);
+    Eigen::Matrix<double, 2 * SpaceDim, 1> StartState(2 * SpaceDim);
     StartState.head(SpaceDim) = P;
     StartState.tail(SpaceDim) = V;
-    Eigen::VectorXd GoalState(2 * SpaceDim);
+    Eigen::Matrix<double, 2 * SpaceDim, 1> GoalState(2 * SpaceDim);
     GoalState.head(SpaceDim) = Goal_P;
     GoalState.tail(SpaceDim) = Goal_V;
 
@@ -387,12 +403,13 @@ inline void StateVertex::getPathFromHere(std::vector<StateVertex> &path_points)
     }
 }
 
-inline double StateVertex::estimateHeuristic(const Eigen::VectorXd &StartState, const Eigen::VectorXd &GoalState,
+inline double StateVertex::estimateHeuristic(const Eigen::Matrix<double, SpaceDim * 2, 1> &StartState,
+                                             const Eigen::Matrix<double, SpaceDim * 2, 1> &GoalState,
                                              double &optimal_time)
 {
-    const Eigen::Vector3d dp = GoalState.head(SpaceDim) - StartState.head(SpaceDim);
-    const Eigen::Vector3d v0 = StartState.tail(SpaceDim);
-    const Eigen::Vector3d v1 = GoalState.tail(SpaceDim);
+    const Eigen::Matrix<double, SpaceDim, 1> dp = GoalState.head(SpaceDim) - StartState.head(SpaceDim);
+    const Eigen::Matrix<double, SpaceDim, 1> v0 = StartState.tail(SpaceDim);
+    const Eigen::Matrix<double, SpaceDim, 1> v1 = GoalState.tail(SpaceDim);
 
     double c1 = -36 * dp.dot(dp);
     double c2 = 24 * (v0 + v1).dot(dp);
@@ -423,8 +440,8 @@ inline double StateVertex::estimateHeuristic(const Eigen::VectorXd &StartState, 
 
     optimal_time = t_d;
 
-    // return 1.0 * (1 + tie_breaker) * cost;
-    return 0.0;
+    return 1.0 * (1 + tie_breaker) * cost;
+    // return 0.0;
 }
 
 inline std::vector<double> StateVertex::cubic(double a, double b, double c, double d)
@@ -520,6 +537,13 @@ inline void V_A_Traj::get(const std::vector<StateVertex> &state_path_points,
         path_points.at(i).V.x() = state_path_points.at(i).V.x();
         path_points.at(i).V.y() = state_path_points.at(i).V.y();
 
+        if constexpr(SpaceDim == 3)
+        {
+            path_points.at(i).at_1.z() = state_path_points.at(i).at_1.z();
+            path_points.at(i).P.z() = state_path_points.at(i).P.z();
+            path_points.at(i).V.z() = state_path_points.at(i).V.z();
+        }
+
         path_points.at(i).dT = state_path_points.at(i).dT;
     }
 
@@ -537,9 +561,9 @@ inline void V_A_Traj::get(const std::vector<StateVertex> &state_path_points,
     C_dur = _C_durr;
 }
 
-inline Eigen::Vector2d V_A_Traj::getPosition(double t)
+inline Eigen::Matrix<double, SpaceDim, 1> V_A_Traj::getPosition(double t)
 {
-    Eigen::Vector2d current_position;
+    Eigen::Matrix<double, SpaceDim, 1> current_position;
     if (t < time_table.front() + 1e-10)
     {
         t = time_table.front() + 1e-10;
@@ -569,8 +593,9 @@ inline Eigen::Vector2d V_A_Traj::getPosition(double t)
     else
     {
         double curr_sec_t = t - time_table.back();
-        current_position(0) = C.block<N_coeff, 1>(0, 0).dot(Beta(0, curr_sec_t));
-        current_position(1) = C.block<N_coeff, 1>(0, 1).dot(Beta(0, curr_sec_t));
+
+        for (int i = 0; i < SpaceDim; ++i)
+            current_position(i) = C.block<N_coeff, 1>(0, i).dot(Beta(0, curr_sec_t));
 
         return current_position;
     }
@@ -595,21 +620,29 @@ inline bool V_A_Traj::vis_path()
     trajMarkerSect.id = 0;
     trajMarkerSect.ns = "trajectory";
 
-    Eigen::Vector2d lastX = getPosition(0);
+    Eigen::Matrix<double, SpaceDim, 1> lastX = getPosition(0);
 
     double T = 0.05;
     double t = T;
     for (; t < time_table.back(); t += T)
     {
-        Eigen::Vector2d current_position = getPosition(t);
+        Eigen::Matrix<double, SpaceDim, 1> current_position = getPosition(t);
 
         geometry_msgs::Point point;
 
         point.x = lastX(0);
         point.y = lastX(1);
+        if constexpr (SpaceDim == 3)
+        {
+            point.z = lastX(2);
+        }
         trajMarkerSect.points.push_back(point);
         point.x = current_position(0);
         point.y = current_position(1);
+        if constexpr (SpaceDim == 3)
+        {
+            point.z = current_position(2);
+        }
         trajMarkerSect.points.push_back(point);
         lastX = current_position;
     }
@@ -634,15 +667,23 @@ inline bool V_A_Traj::vis_path()
 
     for (; t < time_table.back() + C_dur; t += T)
     {
-        Eigen::Vector2d current_position = getPosition(t);
+        Eigen::Matrix<double, SpaceDim, 1> current_position = getPosition(t);
 
         geometry_msgs::Point point;
 
         point.x = lastX(0);
         point.y = lastX(1);
+        if constexpr (SpaceDim == 3)
+        {
+            point.z = lastX(2);
+        }
         trajMarkerSect.points.push_back(point);
         point.x = current_position(0);
         point.y = current_position(1);
+        if constexpr (SpaceDim == 3)
+        {
+            point.z = current_position(2);
+        }
         trajMarkerSect.points.push_back(point);
         lastX = current_position;
     }

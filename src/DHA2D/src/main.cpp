@@ -1,6 +1,6 @@
 #include "HybridAStar/planner.hpp"
 #include "utils.h"
-#include "voxel_map_tool.hpp"
+#include "voxel_map_tool2D.hpp"
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 
 double space_resolution = 0.5;
@@ -14,6 +14,7 @@ class Task
         : path2show(_nh, _path_vis_name)
     {
         MapPtr = std::make_shared<voxel_map_tool>(_nh, _map_vis_name);
+        // MapPtr = std::make_shared<voxel_map_tool>();
         MapPtr->initGridMap(space_resolution, Eigen::Vector2d{map_x_size, map_y_size}, Eigen::Vector2d::Zero());
         setObs_sub = _nh.subscribe("/initialpose", 10, &Task::setObsCB, this);
         setGoal_sub = _nh.subscribe("/move_base_simple/goal", 10, &Task::setGoalCB, this);
@@ -28,7 +29,7 @@ class Task
     ros::Subscriber setObs_sub;
     ros::Subscriber setGoal_sub;
     bool has_goal = false;
-    Eigen::Vector2d Goal_P;
+    Eigen::Matrix<double, HybridAStar::SpaceDim, 1> Goal_P;
     HybridAStar::V_A_Traj path2show;
 };
 
@@ -63,7 +64,9 @@ void Task::loop()
 
             std::clock_t c_start = std::clock();
 
-            bool isSuccess = planner.SearchByHash(MapPtr, Eigen::Vector2d{1.0, 1.0}, Eigen::Vector2d{0.0, 0.0}, Goal_P);
+            bool isSuccess =
+                planner.SearchByHash(MapPtr, Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Ones(),
+                                     Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Zero(), Goal_P);
 
             std::clock_t c_end = std::clock();
             auto time_elapsed_ms = 1000.0 * (c_end - c_start) / CLOCKS_PER_SEC;
@@ -76,7 +79,7 @@ void Task::loop()
                 path2show.get(path, C, AE_dT);
                 path2show.vis_path();
             }
-            else 
+            else
             {
                 std::cout << "Planning Failed." << std::endl;
             }
@@ -97,6 +100,7 @@ void Task::setObsCB(geometry_msgs::PoseWithCovarianceStamped::ConstPtr msg_ptr)
         for (int j = -1; j <= 1; ++j)
         {
             MapPtr->setObs(x + i * space_resolution, y + j * space_resolution);
+            // MapPtr->setObs(x + i * space_resolution, y + j * space_resolution, 1);
         }
     }
 }

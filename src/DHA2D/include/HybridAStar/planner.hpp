@@ -16,10 +16,8 @@ class Planner
     {
         /*-------------------Init the hash grid map-------------------*/
         StateVertexPtrGrid_hash state_vertex_ptr_grid;
-        const Eigen::Vector3d map_size = {2.0 * PlanningRadius, 2.0 * PlanningRadius, time_horizon};
-        Eigen::Vector3d m_offset;
-        m_offset.head(SpaceDim) = Start_P - PlanningRadius * Eigen::Vector2d::Ones();
-        m_offset(SpaceDim) = 0.0;
+        Eigen::Matrix<double, SpaceDim, 1> m_offset;
+        m_offset.head(SpaceDim) = Start_P - PlanningRadius * Eigen::Matrix<double, SpaceDim, 1>::Ones();
         state_vertex_ptr_grid.initGrid(space_resolution, time_resolution, m_offset);
 
         /*-------------------Init the priority queue-------------------*/
@@ -56,7 +54,7 @@ class Planner
             }
 
             // Expand
-            std::vector<Eigen::Vector2d> a_list;
+            std::vector<Eigen::Matrix<double, SpaceDim, 1>> a_list;
             std::vector<double> dT_list;
             getInput(a_list, dT_list);
 
@@ -76,7 +74,8 @@ class Planner
                     }
                     else
                     {
-                        std::unordered_map<Eigen::Vector3i, StateVertex *, matrix_hash<Eigen::Vector3i>>::iterator
+                        std::unordered_map<Eigen::Matrix<int, SpaceDim + TimeDim, 1>, StateVertex *,
+                                           matrix_hash<Eigen::Matrix<int, SpaceDim + TimeDim, 1>>>::iterator
                             hitted_grid_iter;
                         bool isExist =
                             state_vertex_ptr_grid.find(new_v_ptr->P, new_v_ptr->time_stamp, hitted_grid_iter);
@@ -146,10 +145,10 @@ class Planner
         const double IncreT = AE_dT / AE_CheckSteps;
         for (double t = IncreT; t < AE_dT + 1e-10; t += IncreT)
         {
-            Eigen::Vector2d current_position;
+            Eigen::Matrix<double, SpaceDim, 1> current_position;
 
-            current_position(0) = C.block<N_coeff, 1>(0, 0).dot(Beta(0, t));
-            current_position(1) = C.block<N_coeff, 1>(0, 1).dot(Beta(0, t));
+            for (int i = 0; i < SpaceDim; ++i)
+                current_position(i) = C.block<N_coeff, 1>(0, i).dot(Beta(0, t));
 
             if (map_ptr->isObsFree(current_position) == false)
             {
@@ -165,7 +164,7 @@ class Planner
     Eigen::Matrix<double, N_coeff * N_poly, SpaceDim> C; // C: the last section of the path
     double AE_dT;
 
-    void getInput(std::vector<Eigen::Vector2d> &a_list, std::vector<double> &dT_list);
+    void getInput(std::vector<Eigen::Matrix<double, SpaceDim, 1>> &a_list, std::vector<double> &dT_list);
 
     Eigen::Vector4d Beta(const unsigned int d, const double &t);
 
@@ -178,10 +177,10 @@ class Planner
     bool has_path = false;
 };
 
-inline void Planner::getInput(std::vector<Eigen::Vector2d> &a_list, std::vector<double> &dT_list)
+inline void Planner::getInput(std::vector<Eigen::Matrix<double, SpaceDim, 1>> &a_list, std::vector<double> &dT_list)
 {
-    Eigen::Vector2d a;
-    const Eigen::Vector2d IncreA = 2 * max_a / (a_steps - 1);
+    Eigen::Matrix<double, SpaceDim, 1> a;
+    const Eigen::Matrix<double, SpaceDim, 1> IncreA = 2 * max_a / (a_steps - 1);
     for (a(0) = -max_a(0); a(0) < max_a(0) + 1e-10; a(0) += IncreA(0))
     {
         for (a(1) = -max_a(1); a(1) < max_a(1) + 1e-10; a(1) += IncreA(1))
@@ -246,10 +245,10 @@ inline bool Planner::AnalyticExpansion(const Eigen::Matrix<double, SpaceDim, 1> 
     const double IncreT = UseAE_dT / AE_CheckSteps;
     for (double t = IncreT; t < UseAE_dT + 1e-10; t += IncreT)
     {
-        Eigen::Vector2d current_position;
+        Eigen::Matrix<double, SpaceDim, 1> current_position;
 
-        current_position(0) = C.block<N_coeff, 1>(0, 0).dot(Beta(0, t));
-        current_position(1) = C.block<N_coeff, 1>(0, 1).dot(Beta(0, t));
+        for (int i = 0; i < SpaceDim; ++i)
+            current_position(i) = C.block<N_coeff, 1>(0, i).dot(Beta(0, t));
 
         if (map_ptr->isObsFree(current_position) == false)
         {
