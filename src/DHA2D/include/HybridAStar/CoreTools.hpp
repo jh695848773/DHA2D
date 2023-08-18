@@ -18,14 +18,14 @@ inline constexpr int AE_CheckSteps = 15;
 
 inline constexpr double MaxAE_Dist = 3.0;
 
-inline constexpr unsigned int TimeDim = 0;
+inline constexpr unsigned int TimeDim = 1;
 
 inline constexpr unsigned int SpaceDim = 2;
 
 inline const Eigen::Matrix<double, SpaceDim, 1> V_max = {3.0, 3.0};
 inline const Eigen::Matrix<double, SpaceDim, 1> max_a{3.0, 3.0};
 inline constexpr double a_steps = 7;
-inline constexpr double dT_steps = 1;
+inline constexpr double dT_steps = 2;
 
 static_assert(a_steps >= 2, "a_steps should be >= 2");
 
@@ -307,7 +307,7 @@ inline bool StateVertex::checkCollision(std::shared_ptr<const voxel_map_tool> ma
         return true;
     }
 
-    const double estimated_dist = std::max(prev_ptr->V.norm(), V.norm()) * dT;
+    const double estimated_dist = std::max(prev_ptr->V.norm(), V.norm()) * dT + 5;
 
     int check_steps = (int)(estimated_dist / map_resolution);
 
@@ -423,7 +423,8 @@ inline double StateVertex::estimateHeuristic(const Eigen::VectorXd &StartState, 
 
     optimal_time = t_d;
 
-    return 1.0 * (1 + tie_breaker) * cost;
+    // return 1.0 * (1 + tie_breaker) * cost;
+    return 0.0;
 }
 
 inline std::vector<double> StateVertex::cubic(double a, double b, double c, double d)
@@ -552,12 +553,13 @@ inline Eigen::Vector2d V_A_Traj::getPosition(double t)
     if (t < time_table.back())
     {
         unsigned long i = 0;
-        for (; i < time_table.size() - 1; ++i)
+        while (i < time_table.size() - 1)
         {
             if (t > time_table.at(i) - 1e-10 && t < time_table.at(i + 1) + 1e-10)
             {
                 break;
             }
+            i += 1;
         }
         const double curr_sec_t = t - time_table.at(i);
 

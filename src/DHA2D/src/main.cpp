@@ -61,12 +61,24 @@ void Task::loop()
             Eigen::Matrix<double, HybridAStar::N_coeff * HybridAStar::N_poly, HybridAStar::SpaceDim> C;
             double AE_dT;
 
+            std::clock_t c_start = std::clock();
+
             bool isSuccess = planner.SearchByHash(MapPtr, Eigen::Vector2d{1.0, 1.0}, Eigen::Vector2d{0.0, 0.0}, Goal_P);
+
+            std::clock_t c_end = std::clock();
+            auto time_elapsed_ms = 1000.0 * (c_end - c_start) / CLOCKS_PER_SEC;
+            std::cout << "CPU time used for Hybrid A*: " << time_elapsed_ms << " ms\n";
+
             if (isSuccess)
             {
+                std::cout << "Plannning Succeeded." << std::endl;
                 planner.getPath(path, C, AE_dT);
                 path2show.get(path, C, AE_dT);
                 path2show.vis_path();
+            }
+            else 
+            {
+                std::cout << "Planning Failed." << std::endl;
             }
         }
 
@@ -80,14 +92,13 @@ void Task::setObsCB(geometry_msgs::PoseWithCovarianceStamped::ConstPtr msg_ptr)
     double x = msg_ptr->pose.pose.position.x;
     double y = msg_ptr->pose.pose.position.y;
 
-    for(int i = -1; i <= 1; ++i)
+    for (int i = -1; i <= 1; ++i)
     {
-        for(int j = -1; j <= 1; ++j)
+        for (int j = -1; j <= 1; ++j)
         {
             MapPtr->setObs(x + i * space_resolution, y + j * space_resolution);
         }
     }
-
 }
 
 void Task::setGoalCB(geometry_msgs::PoseStamped::ConstPtr msg_ptr)
