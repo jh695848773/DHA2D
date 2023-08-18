@@ -7,7 +7,7 @@ double space_resolution = 0.5;
 double map_x_size = 10.0; // m
 double map_y_size = 10.0; // m
 
-constexpr double DT = 0.01;
+constexpr double DT = 0.001;
 
 class Task
 {
@@ -21,9 +21,10 @@ class Task
         setObs_sub = _nh.subscribe("/initialpose", 10, &Task::setObsCB, this);
         setGoal_sub = _nh.subscribe("/move_base_simple/goal", 10, &Task::setGoalCB, this);
         SimulationLoopTimer = _nh.createTimer(ros::Duration(DT), &Task::SimulationLoop, this);
+        CurrentP_pub = _nh.advertise<visualization_msgs::Marker>("robot_position", 10);
 
-        Start_P = Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Ones();
-        Start_V = Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Zero();
+        Curr_P = Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Ones();
+        Curr_V = Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Zero();
     };
 
     void SimulationLoop(const ros::TimerEvent &event);
@@ -34,10 +35,12 @@ class Task
     std::shared_ptr<voxel_map_tool> MapPtr;
     ros::Subscriber setObs_sub;
     ros::Subscriber setGoal_sub;
+    ros::Publisher CurrentP_pub;
     bool has_goal = false;
     bool has_path = false;
-    Eigen::Matrix<double, HybridAStar::SpaceDim, 1> Start_P;
-    Eigen::Matrix<double, HybridAStar::SpaceDim, 1> Start_V;
+    bool new_goal = false;
+    Eigen::Matrix<double, HybridAStar::SpaceDim, 1> Curr_P;
+    Eigen::Matrix<double, HybridAStar::SpaceDim, 1> Curr_V;
     Eigen::Matrix<double, HybridAStar::SpaceDim, 1> Goal_P;
     HybridAStar::V_A_Traj traj;
     HybridAStar::Planner planner;
@@ -57,7 +60,7 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-int N_planner_frame_passing = 10;
+int N_planner_frame_passing = 100;
 
 void Task::SimulationLoop(const ros::TimerEvent &event)
 {
@@ -72,7 +75,8 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
     }
 
     /*----------------Planning----------------*/
-    if (++planner_frame_passing > N_planner_frame_passing)
+    if (++planner_frame_passing > N_planner_frame_passing &&
+        (new_goal || !has_path || planner.checkPathCollision(MapPtr, space_resolution) == false))
     {
         planner_frame_passing = 0;
         Eigen::Matrix<double, HybridAStar::N_coeff * HybridAStar::N_poly, HybridAStar::SpaceDim> C;
@@ -80,7 +84,7 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
 
         std::clock_t c_start = std::clock();
 
-        bool isSuccess = planner.SearchByHash(MapPtr, Start_P, Start_V, Goal_P);
+        bool isSuccess = planner.SearchByHash(MapPtr, Curr_P, Curr_V, Goal_P);
 
         std::clock_t c_end = std::clock();
         auto time_elapsed_ms = 1000.0 * (c_end - c_start) / CLOCKS_PER_SEC;
@@ -94,6 +98,7 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
             traj.vis_path();
             has_path = true;
             t_on_path = 0.0;
+            new_goal = false;
         }
         else
         {
@@ -105,9 +110,33 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
     if (has_path == true)
     {
         t_on_path += DT;
-        Start_P = traj.getPosition(t_on_path);
-        Start_V = traj.getVelocity(t_on_path);
+        Curr_P = traj.getPosition(t_on_path);
+        Curr_V = traj.getVelocity(t_on_path);
     }
+
+    /*----------------Visualization----------------*/
+    visualization_msgs::Marker point_marker;
+
+    point_marker.header.stamp = ros::Time::now();
+    point_marker.type = visualization_msgs::Marker::SPHERE;
+    point_marker.header.frame_id = "map";
+    point_marker.pose.orientation.w = 1.00;
+    point_marker.action = visualization_msgs::Marker::ADD;
+    point_marker.color.r = 0.00;
+    point_marker.color.g = 1.00;
+    point_marker.color.b = 1.00;
+    point_marker.color.a = 1.00;
+    point_marker.scale.x = 0.4;
+    point_marker.scale.y = 0.4;
+    point_marker.scale.z = 0.0;
+
+    point_marker.id = 0;
+    point_marker.ns = "trajectory";
+    point_marker.pose.position.x = Curr_P.x();
+    point_marker.pose.position.y = Curr_P.y();
+    point_marker.pose.position.z = 0.0;
+
+    CurrentP_pub.publish(point_marker);
 }
 
 void Task::setObsCB(geometry_msgs::PoseWithCovarianceStamped::ConstPtr msg_ptr)
@@ -129,4 +158,5 @@ void Task::setGoalCB(geometry_msgs::PoseStamped::ConstPtr msg_ptr)
     Goal_P(0) = msg_ptr->pose.position.x;
     Goal_P(1) = msg_ptr->pose.position.y;
     has_goal = true;
+    new_goal = true;
 }

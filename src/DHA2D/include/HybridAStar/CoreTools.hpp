@@ -23,8 +23,8 @@ static_assert(TimeDim == 0 || TimeDim == 1, "TimeDim must be 0 or 1");
 
 inline constexpr unsigned int SpaceDim = 2;
 
-inline const Eigen::Matrix<double, SpaceDim, 1> V_max = {3.0, 3.0};
-inline const Eigen::Matrix<double, SpaceDim, 1> max_a{3.0, 3.0};
+inline const Eigen::Matrix<double, SpaceDim, 1> V_max = {5.0, 5.0};
+inline const Eigen::Matrix<double, SpaceDim, 1> max_a{2.0, 2.0};
 inline constexpr double a_steps = 7;
 inline constexpr double dT_steps = 2;
 
@@ -157,7 +157,7 @@ class V_A_Traj
 
     Eigen::Matrix<double, SpaceDim, 1> getPosition(double t);
     Eigen::Matrix<double, SpaceDim, 1> getVelocity(double t);
-    
+
     bool vis_path();
 
   private:
