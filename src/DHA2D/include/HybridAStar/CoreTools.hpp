@@ -18,7 +18,7 @@ inline constexpr int AE_CheckSteps = 15;
 
 inline constexpr double MaxAE_Dist = 3.0;
 
-inline constexpr unsigned int TimeDim = 0;
+inline constexpr unsigned int TimeDim = 1;
 static_assert(TimeDim == 0 || TimeDim == 1, "TimeDim must be 0 or 1");
 
 inline constexpr unsigned int SpaceDim = 2;
@@ -156,7 +156,8 @@ class V_A_Traj
              const Eigen::Matrix<double, N_coeff * N_poly, SpaceDim> _C, const double &_C_durr);
 
     Eigen::Matrix<double, SpaceDim, 1> getPosition(double t);
-
+    Eigen::Matrix<double, SpaceDim, 1> getVelocity(double t);
+    
     bool vis_path();
 
   private:
@@ -596,6 +597,46 @@ inline Eigen::Matrix<double, SpaceDim, 1> V_A_Traj::getPosition(double t)
 
         for (int i = 0; i < SpaceDim; ++i)
             current_position(i) = C.block<N_coeff, 1>(0, i).dot(Beta(0, curr_sec_t));
+
+        return current_position;
+    }
+}
+
+inline Eigen::Matrix<double, SpaceDim, 1> V_A_Traj::getVelocity(double t)
+{
+    Eigen::Matrix<double, SpaceDim, 1> current_position;
+    if (t < time_table.front() + 1e-10)
+    {
+        t = time_table.front() + 1e-10;
+    }
+
+    if (t > time_table.back() + C_dur - 1e-10)
+    {
+        t = time_table.back() + C_dur - 1e-10;
+    }
+
+    if (t < time_table.back())
+    {
+        unsigned long i = 0;
+        while (i < time_table.size() - 1)
+        {
+            if (t > time_table.at(i) - 1e-10 && t < time_table.at(i + 1) + 1e-10)
+            {
+                break;
+            }
+            i += 1;
+        }
+        const double curr_sec_t = t - time_table.at(i);
+
+        return path_points.at(i).V +
+               path_points.at(i + 1).at_1 * curr_sec_t;
+    }
+    else
+    {
+        double curr_sec_t = t - time_table.back();
+
+        for (int i = 0; i < SpaceDim; ++i)
+            current_position(i) = C.block<N_coeff, 1>(0, i).dot(Beta(1, curr_sec_t));
 
         return current_position;
     }
