@@ -12,11 +12,11 @@
 
 namespace HybridAStar
 {
-inline constexpr double max_dT = 1.0;
+inline constexpr double max_dT = 2.0;
 
 inline constexpr int AE_CheckSteps = 15;
 
-inline constexpr double MaxAE_Dist = 3.0;
+inline constexpr double MaxAE_Dist = 2.0;
 
 inline constexpr unsigned int TimeDim = 1;
 static_assert(TimeDim == 0 || TimeDim == 1, "TimeDim must be 0 or 1");
@@ -26,7 +26,7 @@ inline constexpr unsigned int SpaceDim = 2;
 inline const Eigen::Matrix<double, SpaceDim, 1> V_max = {5.0, 5.0};
 inline const Eigen::Matrix<double, SpaceDim, 1> max_a{5.0, 5.0};
 inline constexpr double a_steps = 7;
-inline constexpr double dT_steps = 2;
+inline constexpr double dT_steps = 4;
 
 static_assert(a_steps >= 2, "a_steps should be >= 2");
 
@@ -131,6 +131,13 @@ class StateVertexPtrGrid_hash
 
     bool initGrid(const double &_space_resolution, const double &_time_resolution,
                   const Eigen::Matrix<double, SpaceDim, 1> &global_lower_point);
+
+    std::unordered_map<Eigen::Matrix<int, SpaceDim + TimeDim, 1>, StateVertex *,
+                       matrix_hash<Eigen::Matrix<int, SpaceDim + TimeDim, 1>>> &
+    getDataPtrTable()
+    {
+        return DataPtrTable;
+    }
 
   protected:
     std::unordered_map<Eigen::Matrix<int, SpaceDim + TimeDim, 1>, StateVertex *,
@@ -668,6 +675,11 @@ inline Eigen::Matrix<double, SpaceDim, 1> V_A_Traj::getPosition(double t)
         t = time_table.back() + C_dur - 1e-10;
     }
 
+    if(time_table.back() == 0.0 && C_dur == 0.0)
+    {
+        return path_points.at(0).P;
+    }
+
     if (t < time_table.back())
     {
         unsigned long i = 0;
@@ -706,6 +718,11 @@ inline Eigen::Matrix<double, SpaceDim, 1> V_A_Traj::getVelocity(double t)
     if (t > time_table.back() + C_dur - 1e-10)
     {
         t = time_table.back() + C_dur - 1e-10;
+    }
+
+    if(time_table.back() == 0.0 && C_dur == 0.0)
+    {
+        return path_points.at(0).V;
     }
 
     if (t < time_table.back())

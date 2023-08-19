@@ -27,9 +27,9 @@ class Planner
         // Push the first element
         StateVertex *v_ptr = new StateVertex;
 
-        if(v_ptr->setState(Start_P, Start_V, map_ptr, 0.0, Goal_P, Goal_V, CircleP, CircleV, Radius) == false)
+        if (v_ptr->setState(Start_P, Start_V, map_ptr, 0.0, Goal_P, Goal_V, CircleP, CircleV, Radius) == false)
             return false;
-        
+
         state_vertex_ptr_grid.insert(v_ptr->P, 0.0, v_ptr);
         v_ptr->MultimapIt = OpenSet.insert(std::make_pair(v_ptr->f, v_ptr));
         v_ptr->status = InOpenSet;
@@ -70,6 +70,9 @@ class Planner
                     StateVertex *new_v_ptr = new StateVertex;
 
                     new_v_ptr->simForward(*v_ptr, a, used_dT, Goal_P, Goal_V);
+
+                    new_v_ptr->cost2come += 10*std::exp(-1.0 * std::max((new_v_ptr->P - CircleP - CircleV * new_v_ptr->time_stamp).norm() - Radius, 0.0));
+                    new_v_ptr->f = new_v_ptr->cost2come + new_v_ptr->cost2go;
 
                     // If it's out of the planning radius or out of the time horizon or hit obstacle
                     if (((new_v_ptr->P - Start_P).norm() > PlanningRadius) || (new_v_ptr->time_stamp > time_horizon) ||
@@ -112,6 +115,38 @@ class Planner
                         }
                     }
                 }
+            }
+        }
+
+        auto DataPtrTable = state_vertex_ptr_grid.getDataPtrTable();
+
+        double min_cost = 1e10;
+        StateVertex *v_min_dist2goal = nullptr;
+
+        for (auto &e : DataPtrTable)
+        {
+            
+            double cost = (e.second->P - Goal_P).norm() + 2.5*std::exp(-1.0 * std::max((e.second->P - CircleP - CircleV * e.second->time_stamp).norm() - Radius, 0.0));
+            if (cost < min_cost)
+            {
+
+                v_min_dist2goal = e.second;
+                min_cost = cost;
+            }
+        }
+
+        if (v_min_dist2goal != nullptr)
+        {
+            AE_dT = 0.0;
+            Eigen::Matrix<double, N_coeff * N_poly, SpaceDim> TempC;
+            if (AnalyticExpansion(v_min_dist2goal->P, v_min_dist2goal->V, v_min_dist2goal->P, v_min_dist2goal->V, TempC,
+                                  map_ptr, 0.0, v_min_dist2goal->time_stamp, CircleP, CircleV, Radius) == true)
+            {
+                C = TempC;
+                v_min_dist2goal->getPathFromHere(path_points);
+
+                has_path = true;
+                return true;
             }
         }
 
@@ -295,7 +330,7 @@ inline bool Planner::AnalyticExpansion(const Eigen::Matrix<double, SpaceDim, 1> 
 
     C = M.inverse() * D;
 
-    const double IncreT = UseAE_dT / AE_CheckSteps;
+    const double IncreT = UseAE_dT / AE_CheckSteps + 0.05;
     for (double t = IncreT; t < UseAE_dT + 1e-10; t += IncreT)
     {
         Eigen::Matrix<double, SpaceDim, 1> current_position;
@@ -338,7 +373,7 @@ inline bool Planner::AnalyticExpansion(const Eigen::Matrix<double, SpaceDim, 1> 
 
     C = M.inverse() * D;
 
-    const double IncreT = UseAE_dT / AE_CheckSteps;
+    const double IncreT = UseAE_dT / AE_CheckSteps + 0.05;
     for (double t = IncreT; t < UseAE_dT + 1e-10; t += IncreT)
     {
         Eigen::Matrix<double, SpaceDim, 1> current_position;

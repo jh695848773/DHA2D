@@ -63,7 +63,7 @@ class Task
 
     double Obs_radius = 2.5;
     double Obs_V_End_max = 1.0;
-    double safety_rate = 1.5;
+    double safety_rate = 2.0;
 };
 
 int main(int argc, char *argv[])
@@ -105,7 +105,7 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
 
         std::clock_t c_start = std::clock();
 
-        bool isSuccess = planner.SearchByHash(MapPtr, Curr_P, Curr_V, Goal_P, Curr_Obs_P, Curr_Obs_V, Obs_radius * safety_rate);
+        bool isSuccess = planner.SearchByHash(MapPtr, Curr_P, Curr_V, Goal_P, Curr_Obs_P, Curr_Obs_V, Obs_radius);
 
         std::clock_t c_end = std::clock();
         auto time_elapsed_ms = 1000.0 * (c_end - c_start) / CLOCKS_PER_SEC;
