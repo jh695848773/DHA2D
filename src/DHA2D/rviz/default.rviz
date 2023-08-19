@@ -73,6 +73,15 @@ Visualization Manager:
       Queue Size: 100
       Value: true
 
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: "/obs_position"
+      Name: Marker
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: true
+
     - Class: rviz/Map
       Enabled: true
       Topic: "/vis_map"
