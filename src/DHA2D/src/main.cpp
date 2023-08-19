@@ -61,8 +61,9 @@ class Task
     Eigen::Matrix<double, HybridAStar::SpaceDim, 1> Curr_Obs_V =
         Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Zero();
 
-    double Obs_radius = 1.0;
+    double Obs_radius = 2.5;
     double Obs_V_End_max = 1.0;
+    double safety_rate = 1.5;
 };
 
 int main(int argc, char *argv[])
@@ -96,7 +97,7 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
 
     /*----------------Planning----------------*/
     if (++planner_frame_passing > N_planner_frame_passing &&
-        (new_goal || !has_path || planner.checkPathCollision(MapPtr, space_resolution) == false))
+        (new_goal || !has_path || planner.checkPathCollision(MapPtr, Curr_Obs_P, Curr_Obs_V, Obs_radius * safety_rate, space_resolution) == false))
     {
         planner_frame_passing = 0;
         Eigen::Matrix<double, HybridAStar::N_coeff * HybridAStar::N_poly, HybridAStar::SpaceDim> C;
@@ -104,7 +105,7 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
 
         std::clock_t c_start = std::clock();
 
-        bool isSuccess = planner.SearchByHash(MapPtr, Curr_P, Curr_V, Goal_P);
+        bool isSuccess = planner.SearchByHash(MapPtr, Curr_P, Curr_V, Goal_P, Curr_Obs_P, Curr_Obs_V, Obs_radius * safety_rate);
 
         std::clock_t c_end = std::clock();
         auto time_elapsed_ms = 1000.0 * (c_end - c_start) / CLOCKS_PER_SEC;
@@ -152,14 +153,6 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
     }
 
     /*----------------Simulation----------------*/
-    // Control the path
-    if (has_path == true)
-    {
-        t_on_path += DT;
-        Curr_P = traj.getPosition(t_on_path);
-        Curr_V = traj.getVelocity(t_on_path);
-    }
-
     // // Move the Obs
     if (has_obs_traj == true)
     {
@@ -177,6 +170,14 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
     {
         collision_flag = false;
         
+    }
+
+    // Control the path
+    if (has_path == true && collision_flag == false)
+    {
+        t_on_path += DT;
+        Curr_P = traj.getPosition(t_on_path);
+        Curr_V = traj.getVelocity(t_on_path);
     }
     /*----------------Visualization----------------*/
     visualization_msgs::Marker point_marker;

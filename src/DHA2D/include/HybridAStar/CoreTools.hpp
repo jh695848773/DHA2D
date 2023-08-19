@@ -24,7 +24,7 @@ static_assert(TimeDim == 0 || TimeDim == 1, "TimeDim must be 0 or 1");
 inline constexpr unsigned int SpaceDim = 2;
 
 inline const Eigen::Matrix<double, SpaceDim, 1> V_max = {5.0, 5.0};
-inline const Eigen::Matrix<double, SpaceDim, 1> max_a{2.0, 2.0};
+inline const Eigen::Matrix<double, SpaceDim, 1> max_a{5.0, 5.0};
 inline constexpr double a_steps = 7;
 inline constexpr double dT_steps = 2;
 
@@ -72,10 +72,18 @@ struct StateVertex
                     Eigen::Matrix<double, SpaceDim, 1> Goal_P, Eigen::Matrix<double, SpaceDim, 1> Goal_V);
 
     bool checkCollision(std::shared_ptr<const voxel_map_tool> map_ptr, const double map_resolution);
+    bool checkCollision(std::shared_ptr<const voxel_map_tool> map_ptr, const double map_resolution,
+                        Eigen::Matrix<double, SpaceDim, 1> CircleP, Eigen::Matrix<double, SpaceDim, 1> CircleV,
+                        double Radius);
 
     bool setState(const Eigen::Matrix<double, SpaceDim, 1> &Curr_P, const Eigen::Matrix<double, SpaceDim, 1> &Curr_V,
                   std::shared_ptr<const voxel_map_tool> map_ptr, const double &time,
                   Eigen::Matrix<double, SpaceDim, 1> Goal_P, Eigen::Matrix<double, SpaceDim, 1> Goal_V);
+    bool setState(const Eigen::Matrix<double, SpaceDim, 1> &Curr_P, const Eigen::Matrix<double, SpaceDim, 1> &Curr_V,
+                  std::shared_ptr<const voxel_map_tool> map_ptr, const double &_time_stamp,
+                  Eigen::Matrix<double, SpaceDim, 1> Goal_P, Eigen::Matrix<double, SpaceDim, 1> Goal_V,
+                  Eigen::Matrix<double, SpaceDim, 1> CircleP, Eigen::Matrix<double, SpaceDim, 1> CircleV,
+                  double Radius);
 
     void getPathFromHere(std::vector<StateVertex> &path_points);
 
@@ -346,6 +354,53 @@ inline bool StateVertex::checkCollision(std::shared_ptr<const voxel_map_tool> ma
     return true;
 }
 
+inline bool StateVertex::checkCollision(std::shared_ptr<const voxel_map_tool> map_ptr, const double map_resolution,
+                                        Eigen::Matrix<double, SpaceDim, 1> CircleP,
+                                        Eigen::Matrix<double, SpaceDim, 1> CircleV, double Radius)
+
+{
+    // const double estimated_dist = prev_ptr->V.norm() * dT + 0.5 * at_1.norm() * dT * dT;
+
+    if (prev_ptr == nullptr)
+    {
+        if (map_ptr->isObsFree(P) == false || (P - CircleP - CircleV * time_stamp).norm() < Radius)
+        {
+            isCollision = true;
+            return false;
+        }
+
+        isCollision = false;
+        return true;
+    }
+
+    const double estimated_dist = std::max(prev_ptr->V.norm(), V.norm()) * dT;
+
+    int check_steps = (int)(estimated_dist / map_resolution) + 10;
+
+    if (check_steps < 1)
+        check_steps = 1;
+
+    const double IncreT = dT / check_steps;
+    for (double t = IncreT; t < dT + 1e-10; t += IncreT)
+    {
+        Eigen::Matrix<double, SpaceDim, 1> current_position = (prev_ptr->P + prev_ptr->V * t + 0.5 * at_1 * t * t);
+
+        if (map_ptr->isObsFree(current_position) == false)
+        {
+            isCollision = true;
+            return false;
+        }
+
+        if ((current_position - CircleP - CircleV * (prev_ptr->time_stamp + t)).norm() < Radius)
+        {
+            isCollision = true;
+            return false;
+        }
+    }
+
+    return true;
+}
+
 inline bool StateVertex::setState(const Eigen::Matrix<double, SpaceDim, 1> &Curr_P,
                                   const Eigen::Matrix<double, SpaceDim, 1> &Curr_V,
                                   std::shared_ptr<const voxel_map_tool> map_ptr, const double &_time_stamp,
@@ -359,6 +414,44 @@ inline bool StateVertex::setState(const Eigen::Matrix<double, SpaceDim, 1> &Curr
     V = Curr_V;
 
     if (map_ptr->isObsFree(P) == false)
+    {
+        isCollision = true;
+        return false;
+    }
+
+    cost2come = 0.0; // T + ax^2 + ay^2 + az^2
+
+    Eigen::Matrix<double, 2 * SpaceDim, 1> StartState(2 * SpaceDim);
+    StartState.head(SpaceDim) = P;
+    StartState.tail(SpaceDim) = V;
+    Eigen::Matrix<double, 2 * SpaceDim, 1> GoalState(2 * SpaceDim);
+    GoalState.head(SpaceDim) = Goal_P;
+    GoalState.tail(SpaceDim) = Goal_V;
+
+    cost2go = estimateHeuristic(StartState, GoalState, time2go);
+
+    f = cost2come + cost2go;
+
+    dT = 0.0;
+
+    return true;
+}
+
+inline bool StateVertex::setState(const Eigen::Matrix<double, SpaceDim, 1> &Curr_P,
+                                  const Eigen::Matrix<double, SpaceDim, 1> &Curr_V,
+                                  std::shared_ptr<const voxel_map_tool> map_ptr, const double &_time_stamp,
+                                  Eigen::Matrix<double, SpaceDim, 1> Goal_P, Eigen::Matrix<double, SpaceDim, 1> Goal_V,
+                                  Eigen::Matrix<double, SpaceDim, 1> CircleP,
+                                  Eigen::Matrix<double, SpaceDim, 1> CircleV, double Radius)
+{
+    at_1 = Eigen::Matrix<double, SpaceDim, 1>::Zero();
+    prev_ptr = nullptr;
+    time_stamp = _time_stamp;
+
+    P = Curr_P;
+    V = Curr_V;
+
+    if (map_ptr->isObsFree(P) == false || (P - CircleP - CircleV * time_stamp).norm() < Radius)
     {
         isCollision = true;
         return false;
@@ -538,7 +631,7 @@ inline void V_A_Traj::get(const std::vector<StateVertex> &state_path_points,
         path_points.at(i).V.x() = state_path_points.at(i).V.x();
         path_points.at(i).V.y() = state_path_points.at(i).V.y();
 
-        if constexpr(SpaceDim == 3)
+        if constexpr (SpaceDim == 3)
         {
             path_points.at(i).at_1.z() = state_path_points.at(i).at_1.z();
             path_points.at(i).P.z() = state_path_points.at(i).P.z();
@@ -628,8 +721,7 @@ inline Eigen::Matrix<double, SpaceDim, 1> V_A_Traj::getVelocity(double t)
         }
         const double curr_sec_t = t - time_table.at(i);
 
-        return path_points.at(i).V +
-               path_points.at(i + 1).at_1 * curr_sec_t;
+        return path_points.at(i).V + path_points.at(i + 1).at_1 * curr_sec_t;
     }
     else
     {
