@@ -61,7 +61,7 @@ class Task
     Eigen::Matrix<double, HybridAStar::SpaceDim, 1> Curr_Obs_V =
         Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Zero();
 
-    double Obs_radius = 2.5;
+    double Obs_radius = 2.0;
     double Obs_V_End_max = 1.0;
     double safety_rate = 2.0;
 };
@@ -97,7 +97,9 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
 
     /*----------------Planning----------------*/
     if (++planner_frame_passing > N_planner_frame_passing &&
-        (new_goal || !has_path || planner.checkPathCollision(MapPtr, Curr_Obs_P, Curr_Obs_V, Obs_radius * safety_rate, space_resolution) == false))
+        (planner_frame_passing > 5 * N_planner_frame_passing || new_goal || !has_path ||
+         planner.checkPathCollision(MapPtr, Curr_Obs_P, Curr_Obs_V, Obs_radius * safety_rate, space_resolution) ==
+             false))
     {
         planner_frame_passing = 0;
         Eigen::Matrix<double, HybridAStar::N_coeff * HybridAStar::N_poly, HybridAStar::SpaceDim> C;
@@ -137,8 +139,8 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
         Eigen::Matrix<double, HybridAStar::SpaceDim, 1> Goal_Obs_P;
         Eigen::Matrix<double, HybridAStar::SpaceDim, 1> Goal_Obs_V;
 
-        Goal_Obs_P = Curr_Obs_P + Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Random() * 10;
-        Goal_Obs_V = Curr_Obs_V + Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Random() * 10;
+        Goal_Obs_P = Curr_Obs_P + Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Random() * 5;
+        Goal_Obs_V = Curr_Obs_V + Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Random() * 5;
         Goal_Obs_P(0) = std::max(std::min(Goal_Obs_P(0), map_x_size - Obs_radius), 0.0 + Obs_radius);
         Goal_Obs_P(1) = std::max(std::min(Goal_Obs_P(1), map_x_size - Obs_radius), 0.0 + Obs_radius);
         Goal_Obs_V(0) = std::max(std::min(Goal_Obs_V(0), Obs_V_End_max), -Obs_V_End_max);
@@ -162,14 +164,13 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
     }
 
     // Collision check
-    if (!MapPtr->isObsFree(Curr_P) || (Curr_P - Curr_Obs_P).norm() <= Obs_radius)
+    if ((Curr_P - Curr_Obs_P).norm() <= Obs_radius * 1.1)
     {
         collision_flag = true;
     }
     else
     {
         collision_flag = false;
-        
     }
 
     // Control the path

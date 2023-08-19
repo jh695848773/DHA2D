@@ -34,7 +34,9 @@ class Planner
         v_ptr->MultimapIt = OpenSet.insert(std::make_pair(v_ptr->f, v_ptr));
         v_ptr->status = InOpenSet;
 
-        while (OpenSet.empty() == false)
+        std::clock_t c_start = std::clock();
+
+        while (OpenSet.empty() == false && 1000.0 * (std::clock() - c_start) / CLOCKS_PER_SEC < 50)
         {
             // Pop the first element
             v_ptr = OpenSet.begin()->second;
@@ -71,7 +73,12 @@ class Planner
 
                     new_v_ptr->simForward(*v_ptr, a, used_dT, Goal_P, Goal_V);
 
-                    new_v_ptr->cost2come += 10*std::exp(-1.0 * std::max((new_v_ptr->P - CircleP - CircleV * new_v_ptr->time_stamp).norm() - Radius, 0.0));
+                    new_v_ptr->cost2come +=
+                        100.0 *
+                        std::exp(
+                            -1.0 * 0.4 *
+                            std::max((new_v_ptr->P - CircleP - CircleV * new_v_ptr->time_stamp).norm() - Radius, 0.0)) *
+                        std::exp(-1.0 * new_v_ptr->time_stamp);
                     new_v_ptr->f = new_v_ptr->cost2come + new_v_ptr->cost2go;
 
                     // If it's out of the planning radius or out of the time horizon or hit obstacle
@@ -125,8 +132,12 @@ class Planner
 
         for (auto &e : DataPtrTable)
         {
-            
-            double cost = (e.second->P - Goal_P).norm() + 2.5*std::exp(-1.0 * std::max((e.second->P - CircleP - CircleV * e.second->time_stamp).norm() - Radius, 0.0));
+
+            double cost =
+                (e.second->P - Goal_P).norm() +
+                10.0 *
+                    std::exp(-1.0 * 0.5 *
+                             std::max((e.second->P - CircleP - CircleV * e.second->time_stamp).norm() - Radius, 0.0));
             if (cost < min_cost)
             {
 
