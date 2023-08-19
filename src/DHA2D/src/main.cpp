@@ -27,6 +27,9 @@ class Task
 
         Curr_P = Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Ones();
         Curr_V = Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Zero();
+
+        Curr_Obs_P(0) = map_x_size / 2;
+        Curr_Obs_P(1) = map_y_size / 2;
     };
 
     void SimulationLoop(const ros::TimerEvent &event);
@@ -54,13 +57,12 @@ class Task
 
     minco_trajectory::min_acc<HybridAStar::SpaceDim> obstacle_traj;
 
-    Eigen::Matrix<double, HybridAStar::SpaceDim, 1> Curr_Obs_P =
-        Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Ones();
+    Eigen::Matrix<double, HybridAStar::SpaceDim, 1> Curr_Obs_P;
     Eigen::Matrix<double, HybridAStar::SpaceDim, 1> Curr_Obs_V =
         Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Zero();
 
-    double Obs_radius = 0.5;
-    double Obs_V_max = 2.0;
+    double Obs_radius = 1.0;
+    double Obs_V_End_max = 1.0;
 };
 
 int main(int argc, char *argv[])
@@ -76,7 +78,7 @@ int main(int argc, char *argv[])
 }
 
 int N_planner_frame_passing = 10;
-int N_obs_frame_passing = 10;
+int N_obs_frame_passing = 150;
 
 void Task::SimulationLoop(const ros::TimerEvent &event)
 {
@@ -128,18 +130,18 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
     if (++obs_frame_passing > N_obs_frame_passing)
     {
         obs_frame_passing = 0;
-        std::vector<double> time_vector = {N_obs_frame_passing * DT};
+        std::vector<double> time_vector = {N_obs_frame_passing * DT * 2.0};
         std::vector<Eigen::Matrix<double, HybridAStar::SpaceDim, 1>> waypoints = {};
         std::vector<Eigen::Matrix<double, HybridAStar::SpaceDim, 1>> start_pv = {Curr_Obs_P, Curr_Obs_V};
         Eigen::Matrix<double, HybridAStar::SpaceDim, 1> Goal_Obs_P;
         Eigen::Matrix<double, HybridAStar::SpaceDim, 1> Goal_Obs_V;
 
-        Goal_Obs_P = Curr_Obs_P + Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Random();
-        Goal_Obs_V = Curr_Obs_V + Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Random();
-        Goal_Obs_P(0) = std::max(std::min(Goal_Obs_P(0), map_x_size), 0.0);
-        Goal_Obs_P(1) = std::max(std::min(Goal_Obs_P(1), map_x_size), 0.0);
-        Goal_Obs_V(0) = std::max(std::min(Goal_Obs_V(0), Obs_V_max), -Obs_V_max);
-        Goal_Obs_V(1) = std::max(std::min(Goal_Obs_V(1), Obs_V_max), -Obs_V_max);
+        Goal_Obs_P = Curr_Obs_P + Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Random() * 10;
+        Goal_Obs_V = Curr_Obs_V + Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Random() * 10;
+        Goal_Obs_P(0) = std::max(std::min(Goal_Obs_P(0), map_x_size - Obs_radius), 0.0 + Obs_radius);
+        Goal_Obs_P(1) = std::max(std::min(Goal_Obs_P(1), map_x_size - Obs_radius), 0.0 + Obs_radius);
+        Goal_Obs_V(0) = std::max(std::min(Goal_Obs_V(0), Obs_V_End_max), -Obs_V_End_max);
+        Goal_Obs_V(1) = std::max(std::min(Goal_Obs_V(1), Obs_V_End_max), -Obs_V_End_max);
 
         std::vector<Eigen::Matrix<double, HybridAStar::SpaceDim, 1>> end_pv = {Goal_Obs_P, Goal_Obs_V};
 
@@ -164,18 +166,18 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
         obs_t_on_path += DT;
         Curr_Obs_P = obstacle_traj.getPosition(obs_t_on_path);
         Curr_Obs_V = obstacle_traj.getVelocity(obs_t_on_path);
-
-        // Collision check
-        if (MapPtr->isObsFree(Curr_P))
-        {
-            collision_flag = false;
-        }
-        else
-        {
-            collision_flag = true;
-        }
     }
 
+    // Collision check
+    if (!MapPtr->isObsFree(Curr_P) || (Curr_P - Curr_Obs_P).norm() <= Obs_radius)
+    {
+        collision_flag = true;
+    }
+    else
+    {
+        collision_flag = false;
+        
+    }
     /*----------------Visualization----------------*/
     visualization_msgs::Marker point_marker;
 
@@ -200,7 +202,7 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
     point_marker.color.a = 1.00;
     point_marker.scale.x = 0.4;
     point_marker.scale.y = 0.4;
-    point_marker.scale.z = 0.0;
+    point_marker.scale.z = 0.4;
 
     point_marker.id = 0;
     point_marker.ns = "trajectory";
