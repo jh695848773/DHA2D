@@ -72,14 +72,6 @@ class Planner
 
                     new_v_ptr->simForward(*v_ptr, a, used_dT, Goal_P, Goal_V);
 
-                    new_v_ptr->cost2come +=
-                        60000.0 *
-                        std::exp(-1.0 * 4.0 *
-                                 std::max((new_v_ptr->P - C_Start_P[0] - C_Start_V[0] * new_v_ptr->time_stamp).norm() -
-                                              C_Radius[0],
-                                          0.0));
-                    new_v_ptr->f = new_v_ptr->cost2come + new_v_ptr->cost2go;
-
                     // If it's out of the planning radius or out of the time horizon or hit obstacle
                     if (((new_v_ptr->P - Start_P).norm() > PlanningRadius) || (new_v_ptr->time_stamp > time_horizon) ||
                         (new_v_ptr->checkCollision(map_ptr, space_resolution, C_Start_P, C_Start_V, C_Radius) == false))

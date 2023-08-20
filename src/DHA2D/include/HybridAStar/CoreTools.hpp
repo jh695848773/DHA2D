@@ -327,17 +327,20 @@ inline bool StateVertex::checkCollision(std::shared_ptr<const voxel_map_tool> ma
 
     for (int i = 0; i < N_obs; ++i)
     {
-        if ((P - C_Start_P[i] - C_Start_V[i] * time_stamp).norm() < C_Radius[i])
+        double Dist2C = (P - C_Start_P[i] - C_Start_V[i] * time_stamp).norm() - C_Radius[i];
+        if (Dist2C < 0)
         {
             isCollision = true;
             return false;
         }
+        cost2come += 3000.0 * std::exp(-1.0 * 4.0 * std::max(Dist2C, 0.0));
     }
 
     /*-------------------If no parent, just return-------------------*/
     if (prev_ptr == nullptr)
     {
         isCollision = false;
+        f = cost2come + cost2go;
         return true;
     }
 
@@ -400,15 +403,20 @@ inline bool StateVertex::checkCollision(std::shared_ptr<const voxel_map_tool> ma
 
         for (int i = 0; i < N_obs; ++i)
         {
-            if ((CurrP - C_Start_P[i] - C_Start_V[i] * (prev_ptr->time_stamp + CurrDT)).norm() < C_Radius[i])
+            double Dist2C =
+                (CurrP - C_Start_P[i] - C_Start_V[i] * (prev_ptr->time_stamp + CurrDT)).norm() - C_Radius[i];
+            if (Dist2C < 0)
             {
                 isCollision = true;
                 return false;
             }
+
+            cost2come += 3000.0 * std::exp(-1.0 * 4.0 * std::max(Dist2C, 0.0));
         }
     }
 
     isCollision = false;
+    f = cost2come + cost2go;
     return true;
 }
 

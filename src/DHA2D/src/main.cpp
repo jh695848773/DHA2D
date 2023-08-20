@@ -79,7 +79,7 @@ int main(int argc, char *argv[])
     ros::NodeHandle nh;
 
     Task task(nh);
-    task.setScene0();
+    task.setScene1();
 
     ros::spin();
 
