@@ -13,7 +13,7 @@ class Planner
                       Eigen::Matrix<double, SpaceDim, 1> CircleP, Eigen::Matrix<double, SpaceDim, 1> CircleV,
                       double Radius, Eigen::Matrix<double, SpaceDim, 1> Goal_V = {0.0, 0.0},
                       const double &space_resolution = 0.5, const double &time_resolution = 0.5,
-                      const double &PlanningRadius = 20.0, const double time_horizon = 10.0)
+                      const double &PlanningRadius = 5.0, const double time_horizon = 10.0)
     {
         /*-------------------Init the hash grid map-------------------*/
         StateVertexPtrGrid_hash state_vertex_ptr_grid;
@@ -74,11 +74,10 @@ class Planner
                     new_v_ptr->simForward(*v_ptr, a, used_dT, Goal_P, Goal_V);
 
                     new_v_ptr->cost2come +=
-                        100.0 *
+                        200.0 *
                         std::exp(
-                            -1.0 * 0.4 *
-                            std::max((new_v_ptr->P - CircleP - CircleV * new_v_ptr->time_stamp).norm() - Radius, 0.0)) *
-                        std::exp(-1.0 * new_v_ptr->time_stamp);
+                            -1.0 * 2 *
+                            std::max((new_v_ptr->P - CircleP - CircleV * new_v_ptr->time_stamp).norm() - Radius, 0.0));
                     new_v_ptr->f = new_v_ptr->cost2come + new_v_ptr->cost2go;
 
                     // If it's out of the planning radius or out of the time horizon or hit obstacle
@@ -134,10 +133,11 @@ class Planner
         {
 
             double cost =
-                (e.second->P - Goal_P).norm() +
+                3.0 * e.second->cost2go +
                 10.0 *
-                    std::exp(-1.0 * 0.5 *
-                             std::max((e.second->P - CircleP - CircleV * e.second->time_stamp).norm() - Radius, 0.0));
+                    std::exp(-1.0 * 1.0 *
+                             std::max((e.second->P - CircleP - CircleV * e.second->time_stamp).norm() - Radius, 0.0)) +
+                e.second->cost2come;
             if (cost < min_cost)
             {
 

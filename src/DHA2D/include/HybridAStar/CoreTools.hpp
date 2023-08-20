@@ -30,7 +30,7 @@ inline constexpr double dT_steps = 2;
 
 static_assert(a_steps >= 2, "a_steps should be >= 2");
 
-inline constexpr double time_weight = 1.0;
+inline constexpr double time_weight = 10.0;
 
 inline constexpr char InOpenSet = 1;
 inline constexpr char InClosedSet = 2;
