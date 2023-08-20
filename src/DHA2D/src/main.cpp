@@ -24,8 +24,8 @@ class Task
         SimulationLoopTimer = _nh.createTimer(ros::Duration(DT), &Task::SimulationLoop, this);
         CurrentP_pub = _nh.advertise<visualization_msgs::Marker>("robot_position", 10);
         Obs_CurrentP_pub = _nh.advertise<visualization_msgs::Marker>("obs_position", 10);
-
-        Curr_P = Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Ones();
+        GoalP_pub = _nh.advertise<visualization_msgs::Marker>("goal_position", 10);
+        Curr_P = Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Ones() * 0.5;
         Curr_V = Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Zero();
 
         Curr_Obs_P(0) = map_x_size / 2;
@@ -35,12 +35,15 @@ class Task
     void SimulationLoop(const ros::TimerEvent &event);
     void setObsCB(geometry_msgs::PoseWithCovarianceStamped::ConstPtr msg_ptr);
     void setGoalCB(geometry_msgs::PoseStamped::ConstPtr msg_ptr);
+    void setScene1();
+    void setScene0();
 
   private:
     std::shared_ptr<voxel_map_tool> MapPtr;
     ros::Subscriber setObs_sub;
     ros::Subscriber setGoal_sub;
     ros::Publisher CurrentP_pub;
+    ros::Publisher GoalP_pub;
     ros::Publisher Obs_CurrentP_pub;
     bool has_goal = false;
     bool has_path = false;
@@ -61,9 +64,13 @@ class Task
     Eigen::Matrix<double, HybridAStar::SpaceDim, 1> Curr_Obs_V =
         Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Zero();
 
-    double Obs_radius = 2.0;
+    double Obs_radius = 1.0;
     double Obs_V_End_max = 1.0;
     double safety_rate = 2.0;
+
+    int SceneFlag = 0;
+
+    void GoalSettingScene1();
 };
 
 int main(int argc, char *argv[])
@@ -72,6 +79,7 @@ int main(int argc, char *argv[])
     ros::NodeHandle nh;
 
     Task task(nh);
+    task.setScene1();
 
     ros::spin();
 
@@ -90,10 +98,11 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
     static int planner_frame_passing = 0;
     static int obs_frame_passing = 0;
 
-    if (has_goal == false)
-    {
-        return;
-    }
+    if (SceneFlag == 1)
+        GoalSettingScene1();
+    else if (SceneFlag == 0)
+        if (has_goal == false)
+            return;
 
     /*----------------Planning----------------*/
     if (++planner_frame_passing > N_planner_frame_passing &&
@@ -238,6 +247,33 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
     obs_point_marker.pose.position.z = 0.0;
 
     Obs_CurrentP_pub.publish(obs_point_marker);
+
+    {
+        visualization_msgs::Marker goal_point_marker;
+
+        goal_point_marker.header.stamp = ros::Time::now();
+        goal_point_marker.type = visualization_msgs::Marker::SPHERE;
+        goal_point_marker.header.frame_id = "map";
+        goal_point_marker.pose.orientation.w = 1.00;
+        goal_point_marker.action = visualization_msgs::Marker::ADD;
+
+        goal_point_marker.color.r = 1.00;
+        goal_point_marker.color.g = 1.00;
+        goal_point_marker.color.b = 0.00;
+
+        goal_point_marker.color.a = 1.00;
+        goal_point_marker.scale.x = 0.4;
+        goal_point_marker.scale.y = 0.4;
+        goal_point_marker.scale.z = 0.4;
+
+        goal_point_marker.id = 0;
+        goal_point_marker.ns = "trajectory";
+        goal_point_marker.pose.position.x = Goal_P.x();
+        goal_point_marker.pose.position.y = Goal_P.y();
+        goal_point_marker.pose.position.z = 0.0;
+
+        GoalP_pub.publish(goal_point_marker);
+    }
 }
 
 void Task::setObsCB(geometry_msgs::PoseWithCovarianceStamped::ConstPtr msg_ptr)
@@ -260,4 +296,75 @@ void Task::setGoalCB(geometry_msgs::PoseStamped::ConstPtr msg_ptr)
     Goal_P(1) = msg_ptr->pose.position.y;
     has_goal = true;
     new_goal = true;
+}
+
+void Task::setScene0()
+{
+    SceneFlag = 0;
+    return;
+}
+
+void Task::setScene1()
+{
+    auto SetInfla = [&](double x, double y) {
+        for (int i = -1; i <= 1; ++i)
+        {
+            for (int j = -1; j <= 1; ++j)
+            {
+                MapPtr->setObs(x + i * space_resolution, y + j * space_resolution);
+            }
+        }
+    };
+
+    /*---------------Set Obs---------------*/
+    for (double d = 0; d < map_y_size / 3; d += 1)
+        SetInfla(1.5, d);
+
+    for (double d = 0; d < map_x_size / 3; d += 1)
+        SetInfla(d, map_y_size - 2.0);
+
+    for (double d = 0; d < map_y_size / 3; d += 1)
+        SetInfla(map_x_size - 2.0, map_y_size - d - 0.5);
+
+    for (double d = 0; d < map_x_size / 3; d += 1)
+        SetInfla(map_x_size - d - 0.5, 1.5);
+
+    SetInfla(map_x_size / 2, map_y_size / 2);
+    SceneFlag = 1;
+}
+
+void Task::GoalSettingScene1()
+{
+    static int goal_flag = 1;
+
+    if (has_goal == false)
+    {
+        has_goal = true;
+        Goal_P = Eigen::Vector2d{0.5, map_y_size - 0.5};
+        goal_flag = 2;
+    }
+
+    if ((Curr_P - Goal_P).norm() < 0.1)
+    {
+        if (goal_flag == 1)
+        {
+            Goal_P = Eigen::Vector2d{0.5, map_y_size - 0.5};
+            goal_flag = 2;
+        }
+        else if (goal_flag == 2)
+        {
+            Goal_P = Eigen::Vector2d{map_x_size - 0.5, map_y_size - 0.5};
+            goal_flag = 3;
+        }
+        else if (goal_flag == 3)
+        {
+            Goal_P = Eigen::Vector2d{map_x_size - 0.5, 0.5};
+            goal_flag = 4;
+        }
+        else if (goal_flag == 4)
+        {
+            Goal_P = Eigen::Vector2d{0.5, 0.5};
+            goal_flag = 1;
+        }
+    }
 }

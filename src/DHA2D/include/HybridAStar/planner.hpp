@@ -76,7 +76,7 @@ class Planner
                     new_v_ptr->cost2come +=
                         60000.0 *
                         std::exp(
-                            -1.0 * 4.5 *
+                            -1.0 * 4.0 *
                             std::max((new_v_ptr->P - CircleP - CircleV * new_v_ptr->time_stamp).norm() - Radius, 0.0));
                     new_v_ptr->f = new_v_ptr->cost2come + new_v_ptr->cost2go;
 
@@ -137,7 +137,7 @@ class Planner
             }
 
             double cost =
-                50.0 * e.second->cost2go +
+                30.0 * e.second->cost2go +
                 // 3000.0 *
                 //     std::exp(-1.0 * 2.0 *
                 //              std::max((e.second->P - CircleP- CircleV * e.second->time_stamp).norm() - Radius, 0.0)) +
