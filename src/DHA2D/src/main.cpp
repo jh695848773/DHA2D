@@ -139,8 +139,8 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
         Eigen::Matrix<double, HybridAStar::SpaceDim, 1> Goal_Obs_P;
         Eigen::Matrix<double, HybridAStar::SpaceDim, 1> Goal_Obs_V;
 
-        Goal_Obs_P = Curr_Obs_P + Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Random() * 5;
-        Goal_Obs_V = Curr_Obs_V + Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Random() * 5;
+        Goal_Obs_P = Curr_P + Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Random() * 5;
+        Goal_Obs_V = Curr_Obs_V + Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Random() * 10;
         Goal_Obs_P(0) = std::max(std::min(Goal_Obs_P(0), map_x_size - Obs_radius), 0.0 + Obs_radius);
         Goal_Obs_P(1) = std::max(std::min(Goal_Obs_P(1), map_x_size - Obs_radius), 0.0 + Obs_radius);
         Goal_Obs_V(0) = std::max(std::min(Goal_Obs_V(0), Obs_V_End_max), -Obs_V_End_max);
