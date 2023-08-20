@@ -12,6 +12,7 @@
 
 namespace HybridAStar
 {
+
 inline constexpr double max_dT = 1.0;
 
 inline constexpr int AE_CheckSteps = 15;
@@ -23,10 +24,13 @@ static_assert(TimeDim == 0 || TimeDim == 1, "TimeDim must be 0 or 1");
 
 inline constexpr unsigned int SpaceDim = 2;
 
-inline const Eigen::Matrix<double, SpaceDim, 1> V_max = {10.0, 10.0};
-inline const Eigen::Matrix<double, SpaceDim, 1> max_a{10.0, 10.0};
+typedef Eigen::Matrix<double, SpaceDim, 1> SVector;
+typedef Eigen::Matrix<int, SpaceDim + TimeDim, 1> STVector;
+
+inline const SVector V_max = {10.0, 10.0};
+inline const SVector max_a{10.0, 10.0};
 inline constexpr double a_steps = 11;
-inline constexpr double dT_steps = 5;
+inline constexpr double dT_steps = 2;
 
 static_assert(a_steps >= 2, "a_steps should be >= 2");
 
@@ -41,12 +45,14 @@ inline constexpr unsigned int N_poly = 1;
 
 inline constexpr double tie_breaker = 1.0 + 1.0 / 10000;
 
+inline int N_obs = 1;
+
 struct StateVertex
 {
-    Eigen::Matrix<double, SpaceDim, 1> P;
-    Eigen::Matrix<double, SpaceDim, 1> V;
+    SVector P;
+    SVector V;
 
-    Eigen::Matrix<double, SpaceDim, 1> at_1;
+    SVector at_1;
 
     struct StateVertex *prev_ptr;
 
@@ -68,22 +74,15 @@ struct StateVertex
     StateVertex()
     {
     }
-    bool simForward(StateVertex &prev, const Eigen::Matrix<double, SpaceDim, 1> &_at_1, const double &_dT,
-                    Eigen::Matrix<double, SpaceDim, 1> Goal_P, Eigen::Matrix<double, SpaceDim, 1> Goal_V);
+    bool simForward(StateVertex &prev, const SVector &_at_1, const double &_dT, SVector Goal_P, SVector Goal_V);
 
-    bool checkCollision(std::shared_ptr<const voxel_map_tool> map_ptr, const double map_resolution);
     bool checkCollision(std::shared_ptr<const voxel_map_tool> map_ptr, const double map_resolution,
-                        Eigen::Matrix<double, SpaceDim, 1> CircleP, Eigen::Matrix<double, SpaceDim, 1> CircleV,
-                        double Radius);
+                        std::vector<SVector> C_Start_P = {}, std::vector<SVector> C_Start_V = {},
+                        std::vector<double> C_Radius = {});
 
-    bool setState(const Eigen::Matrix<double, SpaceDim, 1> &Curr_P, const Eigen::Matrix<double, SpaceDim, 1> &Curr_V,
-                  std::shared_ptr<const voxel_map_tool> map_ptr, const double &time,
-                  Eigen::Matrix<double, SpaceDim, 1> Goal_P, Eigen::Matrix<double, SpaceDim, 1> Goal_V);
-    bool setState(const Eigen::Matrix<double, SpaceDim, 1> &Curr_P, const Eigen::Matrix<double, SpaceDim, 1> &Curr_V,
-                  std::shared_ptr<const voxel_map_tool> map_ptr, const double &_time_stamp,
-                  Eigen::Matrix<double, SpaceDim, 1> Goal_P, Eigen::Matrix<double, SpaceDim, 1> Goal_V,
-                  Eigen::Matrix<double, SpaceDim, 1> CircleP, Eigen::Matrix<double, SpaceDim, 1> CircleV,
-                  double Radius);
+    bool setState(const SVector &Curr_P, const SVector &Curr_V, std::shared_ptr<const voxel_map_tool> map_ptr,
+                  const double &_time_stamp, SVector Goal_P, SVector Goal_V, std::vector<SVector> C_Start_P = {},
+                  std::vector<SVector> C_Start_V = {}, std::vector<double> C_Radius = {});
 
     void getPathFromHere(std::vector<StateVertex> &path_points);
 
@@ -122,33 +121,27 @@ class StateVertexPtrGrid_hash
         }
     }
 
-    bool find(const Eigen::Matrix<double, SpaceDim, 1> &coord, const double &time,
-              std::unordered_map<Eigen::Matrix<int, SpaceDim + TimeDim, 1>, StateVertex *,
-                                 matrix_hash<Eigen::Matrix<int, SpaceDim + TimeDim, 1>>>::iterator &iter);
+    bool find(const SVector &coord, const double &time,
+              std::unordered_map<STVector, StateVertex *, matrix_hash<STVector>>::iterator &iter);
 
-    void insert(const Eigen::Matrix<double, SpaceDim, 1> &coord, const double &time,
+    void insert(const SVector &coord, const double &time,
                 StateVertex *ptr); // coord: x, y, z, ... time
 
-    bool initGrid(const double &_space_resolution, const double &_time_resolution,
-                  const Eigen::Matrix<double, SpaceDim, 1> &global_lower_point);
+    bool initGrid(const double &_space_resolution, const double &_time_resolution, const SVector &global_lower_point);
 
-    std::unordered_map<Eigen::Matrix<int, SpaceDim + TimeDim, 1>, StateVertex *,
-                       matrix_hash<Eigen::Matrix<int, SpaceDim + TimeDim, 1>>> &
-    getDataPtrTable()
+    std::unordered_map<STVector, StateVertex *, matrix_hash<STVector>> &getDataPtrTable()
     {
         return DataPtrTable;
     }
 
   protected:
-    std::unordered_map<Eigen::Matrix<int, SpaceDim + TimeDim, 1>, StateVertex *,
-                       matrix_hash<Eigen::Matrix<int, SpaceDim + TimeDim, 1>>>
-        DataPtrTable;
+    std::unordered_map<STVector, StateVertex *, matrix_hash<STVector>> DataPtrTable;
 
     double space_resolution;
     double inv_space_resolution;
     double time_resolution;
     double inv_time_resolution;
-    Eigen::Matrix<double, SpaceDim, 1> space_offset;
+    SVector space_offset;
     double t_offest;
 };
 
@@ -170,17 +163,17 @@ class V_A_Traj
     void get(const std::vector<StateVertex> &state_path_points,
              const Eigen::Matrix<double, N_coeff * N_poly, SpaceDim> _C, const double &_C_durr);
 
-    Eigen::Matrix<double, SpaceDim, 1> getPosition(double t);
-    Eigen::Matrix<double, SpaceDim, 1> getVelocity(double t);
+    SVector getPosition(double t);
+    SVector getVelocity(double t);
 
     bool vis_path();
 
   private:
     struct State
     {
-        Eigen::Matrix<double, SpaceDim, 1> P;
-        Eigen::Matrix<double, SpaceDim, 1> V;
-        Eigen::Matrix<double, SpaceDim, 1> at_1;
+        SVector P;
+        SVector V;
+        SVector at_1;
         double dT;
     };
 
@@ -196,11 +189,10 @@ class V_A_Traj
 };
 
 inline bool StateVertexPtrGrid_hash::find(
-    const Eigen::Matrix<double, SpaceDim, 1> &coord, const double &time,
-    std::unordered_map<Eigen::Matrix<int, SpaceDim + TimeDim, 1>, StateVertex *,
-                       matrix_hash<Eigen::Matrix<int, SpaceDim + TimeDim, 1>>>::iterator &iter)
+    const SVector &coord, const double &time,
+    std::unordered_map<STVector, StateVertex *, matrix_hash<STVector>>::iterator &iter)
 {
-    Eigen::Matrix<int, SpaceDim + TimeDim, 1> idx;
+    STVector idx;
 
     // From coordinate to grid index
     for (int i = 0; i < SpaceDim; ++i)
@@ -217,10 +209,9 @@ inline bool StateVertexPtrGrid_hash::find(
         return true;
 }
 
-inline void StateVertexPtrGrid_hash::insert(const Eigen::Matrix<double, SpaceDim, 1> &coord, const double &time,
-                                            StateVertex *ptr)
+inline void StateVertexPtrGrid_hash::insert(const SVector &coord, const double &time, StateVertex *ptr)
 {
-    Eigen::Matrix<int, SpaceDim + TimeDim, 1> idx;
+    STVector idx;
 
     // From coordinate to grid index
     for (int i = 0; i < SpaceDim; ++i)
@@ -235,7 +226,7 @@ inline void StateVertexPtrGrid_hash::insert(const Eigen::Matrix<double, SpaceDim
 }
 
 inline bool StateVertexPtrGrid_hash::initGrid(const double &_space_resolution, const double &_time_resolution,
-                                              const Eigen::Matrix<double, SpaceDim, 1> &global_lower_point)
+                                              const SVector &global_lower_point)
 {
     space_resolution = _space_resolution;
     time_resolution = _time_resolution;
@@ -250,9 +241,8 @@ inline bool StateVertexPtrGrid_hash::initGrid(const double &_space_resolution, c
     return true;
 }
 
-inline bool StateVertex::simForward(StateVertex &prev, const Eigen::Matrix<double, SpaceDim, 1> &_at_1,
-                                    const double &_dT, Eigen::Matrix<double, SpaceDim, 1> Goal_P,
-                                    Eigen::Matrix<double, SpaceDim, 1> Goal_V)
+inline bool StateVertex::simForward(StateVertex &prev, const SVector &_at_1, const double &_dT, SVector Goal_P,
+                                    SVector Goal_V)
 {
     dT = _dT;
     at_1 = _at_1;
@@ -323,97 +313,111 @@ inline bool StateVertex::simForward(StateVertex &prev, const Eigen::Matrix<doubl
     return true;
 }
 
-inline bool StateVertex::checkCollision(std::shared_ptr<const voxel_map_tool> map_ptr, const double map_resolution)
-{
-    // const double estimated_dist = prev_ptr->V.norm() * dT + 0.5 * at_1.norm() * dT * dT;
-
-    if (prev_ptr == nullptr)
-    {
-        if (map_ptr->isObsFree(P) == false)
-        {
-            isCollision = true;
-            return false;
-        }
-
-        isCollision = false;
-        return true;
-    }
-
-    const double estimated_dist = std::max(prev_ptr->V.norm(), V.norm()) * dT;
-
-    int check_steps = (int)(estimated_dist / map_resolution) + 10;
-
-    if (check_steps < 1)
-        check_steps = 1;
-
-    const double IncreT = dT / check_steps;
-    for (double t = IncreT; t < dT + 1e-10; t += IncreT)
-    {
-        Eigen::Matrix<double, SpaceDim, 1> current_position = (prev_ptr->P + prev_ptr->V * t + 0.5 * at_1 * t * t);
-
-        if (map_ptr->isObsFree(current_position) == false)
-        {
-            isCollision = true;
-            return false;
-        }
-    }
-
-    return true;
-}
-
 inline bool StateVertex::checkCollision(std::shared_ptr<const voxel_map_tool> map_ptr, const double map_resolution,
-                                        Eigen::Matrix<double, SpaceDim, 1> CircleP,
-                                        Eigen::Matrix<double, SpaceDim, 1> CircleV, double Radius)
+                                        std::vector<SVector> C_Start_P, std::vector<SVector> C_Start_V,
+                                        std::vector<double> C_Radius)
 
 {
-    // const double estimated_dist = prev_ptr->V.norm() * dT + 0.5 * at_1.norm() * dT * dT;
-
-    if (prev_ptr == nullptr)
+    /*-------------------Checking End Point-------------------*/
+    if (map_ptr->isObsFree(P) == false)
     {
-        if (map_ptr->isObsFree(P) == false || (P - CircleP - CircleV * time_stamp).norm() < Radius)
+        isCollision = true;
+        return false;
+    }
+
+    for (int i = 0; i < N_obs; ++i)
+    {
+        if ((P - C_Start_P[i] - C_Start_V[i] * time_stamp).norm() < C_Radius[i])
         {
             isCollision = true;
             return false;
         }
+    }
 
+    /*-------------------If no parent, just return-------------------*/
+    if (prev_ptr == nullptr)
+    {
         isCollision = false;
         return true;
     }
 
-    const double estimated_dist = std::max(prev_ptr->V.norm(), V.norm()) * dT;
+    /*-------------------Checking intermediate Points, except for starting point and end point-------------------*/
+    auto getMinDeltaTAxis = [](double CurrV, double Curr_a, double dist) {
+        double DeltaT = +std::numeric_limits<double>::infinity();
 
-    int check_steps = (int)(estimated_dist / map_resolution) + 10;
+        if (Curr_a < 1e-10 && Curr_a > -1e-10)
+            Curr_a = Curr_a + 1e-10;
 
-    if (check_steps < 1)
-        check_steps = 1;
+        for (double i = -1; i <= 1; i += 2)
+        {
+            double a = 0.5 * Curr_a;
+            double b = CurrV;
+            double c = dist * i;
+            double delta = b * b - 4 * a * c;
 
-    const double IncreT = dT / check_steps;
-    for (double t = IncreT; t < dT + 1e-10; t += IncreT)
+            if (delta < 0)
+                continue;
+
+            double PossibleDeltaT = (-b + sqrt(delta)) / (2 * a);
+            if (PossibleDeltaT > 0 && PossibleDeltaT < DeltaT)
+                DeltaT = PossibleDeltaT;
+
+            PossibleDeltaT = (-b - sqrt(delta)) / (2 * a);
+            if (PossibleDeltaT > 0 && PossibleDeltaT < DeltaT)
+                DeltaT = PossibleDeltaT;
+        }
+
+        return DeltaT;
+    };
+
+    SVector CurrV = prev_ptr->V;
+    SVector CurrP = prev_ptr->P;
+    double t = 0;
+    while (true)
     {
-        Eigen::Matrix<double, SpaceDim, 1> current_position = (prev_ptr->P + prev_ptr->V * t + 0.5 * at_1 * t * t);
+        SVector CurrDTAllAxis;
+        for (int i = 0; i < SpaceDim; ++i)
+        {
+            CurrDTAllAxis(i) = getMinDeltaTAxis(CurrV(i), at_1(i), map_resolution);
+        }
 
-        if (map_ptr->isObsFree(current_position) == false)
+        double CurrDT = CurrDTAllAxis.minCoeff();
+
+        t += CurrDT;
+        if (t > dT)
+        {
+            break;
+        }
+
+        CurrP = prev_ptr->P + prev_ptr->V * t + 0.5 * at_1 * t * t;
+        CurrV = prev_ptr->V + at_1 * t;
+
+        if (map_ptr->isObsFree(CurrP) == false)
         {
             isCollision = true;
             return false;
         }
 
-        if ((current_position - CircleP - CircleV * (prev_ptr->time_stamp + t)).norm() < Radius)
+        for (int i = 0; i < N_obs; ++i)
         {
-            isCollision = true;
-            return false;
+            if ((CurrP - C_Start_P[i] - C_Start_V[i] * (prev_ptr->time_stamp + CurrDT)).norm() < C_Radius[i])
+            {
+                isCollision = true;
+                return false;
+            }
         }
     }
 
+    isCollision = false;
     return true;
 }
 
-inline bool StateVertex::setState(const Eigen::Matrix<double, SpaceDim, 1> &Curr_P,
-                                  const Eigen::Matrix<double, SpaceDim, 1> &Curr_V,
+inline bool StateVertex::setState(const SVector &Curr_P, const SVector &Curr_V,
                                   std::shared_ptr<const voxel_map_tool> map_ptr, const double &_time_stamp,
-                                  Eigen::Matrix<double, SpaceDim, 1> Goal_P, Eigen::Matrix<double, SpaceDim, 1> Goal_V)
+                                  SVector Goal_P, SVector Goal_V, std::vector<SVector> C_Start_P,
+                                  std::vector<SVector> C_Start_V, std::vector<double> C_Radius)
 {
-    at_1 = Eigen::Matrix<double, SpaceDim, 1>::Zero();
+    at_1 = SVector::Zero();
     prev_ptr = nullptr;
     time_stamp = _time_stamp;
 
@@ -426,42 +430,13 @@ inline bool StateVertex::setState(const Eigen::Matrix<double, SpaceDim, 1> &Curr
         return false;
     }
 
-    cost2come = 0.0; // T + ax^2 + ay^2 + az^2
-
-    Eigen::Matrix<double, 2 * SpaceDim, 1> StartState(2 * SpaceDim);
-    StartState.head(SpaceDim) = P;
-    StartState.tail(SpaceDim) = V;
-    Eigen::Matrix<double, 2 * SpaceDim, 1> GoalState(2 * SpaceDim);
-    GoalState.head(SpaceDim) = Goal_P;
-    GoalState.tail(SpaceDim) = Goal_V;
-
-    cost2go = estimateHeuristic(StartState, GoalState, time2go);
-
-    f = cost2come + cost2go;
-
-    dT = 0.0;
-
-    return true;
-}
-
-inline bool StateVertex::setState(const Eigen::Matrix<double, SpaceDim, 1> &Curr_P,
-                                  const Eigen::Matrix<double, SpaceDim, 1> &Curr_V,
-                                  std::shared_ptr<const voxel_map_tool> map_ptr, const double &_time_stamp,
-                                  Eigen::Matrix<double, SpaceDim, 1> Goal_P, Eigen::Matrix<double, SpaceDim, 1> Goal_V,
-                                  Eigen::Matrix<double, SpaceDim, 1> CircleP,
-                                  Eigen::Matrix<double, SpaceDim, 1> CircleV, double Radius)
-{
-    at_1 = Eigen::Matrix<double, SpaceDim, 1>::Zero();
-    prev_ptr = nullptr;
-    time_stamp = _time_stamp;
-
-    P = Curr_P;
-    V = Curr_V;
-
-    if (map_ptr->isObsFree(P) == false || (P - CircleP - CircleV * time_stamp).norm() < Radius)
+    for (int i = 0; i < N_obs; ++i)
     {
-        isCollision = true;
-        return false;
+        if ((P - C_Start_P[i] - C_Start_V[i] * time_stamp).norm() < C_Radius[i])
+        {
+            isCollision = true;
+            return false;
+        }
     }
 
     cost2come = 0.0; // T + ax^2 + ay^2 + az^2
@@ -508,9 +483,9 @@ inline double StateVertex::estimateHeuristic(const Eigen::Matrix<double, SpaceDi
                                              const Eigen::Matrix<double, SpaceDim * 2, 1> &GoalState,
                                              double &optimal_time)
 {
-    const Eigen::Matrix<double, SpaceDim, 1> dp = GoalState.head(SpaceDim) - StartState.head(SpaceDim);
-    const Eigen::Matrix<double, SpaceDim, 1> v0 = StartState.tail(SpaceDim);
-    const Eigen::Matrix<double, SpaceDim, 1> v1 = GoalState.tail(SpaceDim);
+    const SVector dp = GoalState.head(SpaceDim) - StartState.head(SpaceDim);
+    const SVector v0 = StartState.tail(SpaceDim);
+    const SVector v1 = GoalState.tail(SpaceDim);
 
     double c1 = -36 * dp.dot(dp);
     double c2 = 24 * (v0 + v1).dot(dp);
@@ -662,9 +637,9 @@ inline void V_A_Traj::get(const std::vector<StateVertex> &state_path_points,
     C_dur = _C_durr;
 }
 
-inline Eigen::Matrix<double, SpaceDim, 1> V_A_Traj::getPosition(double t)
+inline SVector V_A_Traj::getPosition(double t)
 {
-    Eigen::Matrix<double, SpaceDim, 1> current_position;
+    SVector current_position;
     if (t < time_table.front() + 1e-10)
     {
         t = time_table.front() + 1e-10;
@@ -675,7 +650,7 @@ inline Eigen::Matrix<double, SpaceDim, 1> V_A_Traj::getPosition(double t)
         t = time_table.back() + C_dur - 1e-10;
     }
 
-    if(time_table.back() == 0.0 && C_dur == 0.0)
+    if (time_table.back() == 0.0 && C_dur == 0.0)
     {
         return path_points.at(0).P;
     }
@@ -707,9 +682,9 @@ inline Eigen::Matrix<double, SpaceDim, 1> V_A_Traj::getPosition(double t)
     }
 }
 
-inline Eigen::Matrix<double, SpaceDim, 1> V_A_Traj::getVelocity(double t)
+inline SVector V_A_Traj::getVelocity(double t)
 {
-    Eigen::Matrix<double, SpaceDim, 1> current_position;
+    SVector current_position;
     if (t < time_table.front() + 1e-10)
     {
         t = time_table.front() + 1e-10;
@@ -720,7 +695,7 @@ inline Eigen::Matrix<double, SpaceDim, 1> V_A_Traj::getVelocity(double t)
         t = time_table.back() + C_dur - 1e-10;
     }
 
-    if(time_table.back() == 0.0 && C_dur == 0.0)
+    if (time_table.back() == 0.0 && C_dur == 0.0)
     {
         return path_points.at(0).V;
     }
@@ -770,13 +745,13 @@ inline bool V_A_Traj::vis_path()
     trajMarkerSect.id = 0;
     trajMarkerSect.ns = "trajectory";
 
-    Eigen::Matrix<double, SpaceDim, 1> lastX = getPosition(0);
+    SVector lastX = getPosition(0);
 
     double T = 0.05;
     double t = T;
     for (; t < time_table.back(); t += T)
     {
-        Eigen::Matrix<double, SpaceDim, 1> current_position = getPosition(t);
+        SVector current_position = getPosition(t);
 
         geometry_msgs::Point point;
 
@@ -817,7 +792,7 @@ inline bool V_A_Traj::vis_path()
 
     for (; t < time_table.back() + C_dur; t += T)
     {
-        Eigen::Matrix<double, SpaceDim, 1> current_position = getPosition(t);
+        SVector current_position = getPosition(t);
 
         geometry_msgs::Point point;
 

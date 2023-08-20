@@ -79,7 +79,7 @@ int main(int argc, char *argv[])
     ros::NodeHandle nh;
 
     Task task(nh);
-    task.setScene1();
+    task.setScene0();
 
     ros::spin();
 
@@ -107,8 +107,9 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
     /*----------------Planning----------------*/
     if (++planner_frame_passing > N_planner_frame_passing &&
         (planner_frame_passing > 5 * N_planner_frame_passing || new_goal || !has_path ||
-         planner.checkPathCollision(MapPtr, Curr_Obs_P, Curr_Obs_V, Obs_radius * safety_rate, space_resolution) ==
-             false))
+         planner.checkPathCollision(MapPtr, std::vector<HybridAStar::SVector>{Curr_Obs_P},
+                                    std::vector<HybridAStar::SVector>{Curr_Obs_V},
+                                    std::vector<double>{Obs_radius * safety_rate}, space_resolution) == false))
     {
         planner_frame_passing = 0;
         Eigen::Matrix<double, HybridAStar::N_coeff * HybridAStar::N_poly, HybridAStar::SpaceDim> C;
@@ -116,7 +117,13 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
 
         std::clock_t c_start = std::clock();
 
-        bool isSuccess = planner.SearchByHash(MapPtr, Curr_P, Curr_V, Goal_P, Curr_Obs_P, Curr_Obs_V, Obs_radius);
+        bool isSuccess =
+            planner.SearchByHash(MapPtr, Curr_P, Curr_V, Goal_P, HybridAStar::SVector{0.0, 0.0},
+                                 std::vector<HybridAStar::SVector>{Curr_Obs_P},
+                                 std::vector<HybridAStar::SVector>{Curr_Obs_V}, std::vector<double>{Obs_radius});
+
+        // bool isSuccess =
+        //     planner.SearchByHash(MapPtr, Curr_P, Curr_V, Goal_P, HybridAStar::SVector{0.0, 0.0});
 
         std::clock_t c_end = std::clock();
         auto time_elapsed_ms = 1000.0 * (c_end - c_start) / CLOCKS_PER_SEC;

@@ -8,17 +8,16 @@ namespace HybridAStar
 class Planner
 {
   public:
-    bool SearchByHash(std::shared_ptr<const voxel_map_tool> map_ptr, Eigen::Matrix<double, SpaceDim, 1> Start_P,
-                      Eigen::Matrix<double, SpaceDim, 1> Start_V, Eigen::Matrix<double, SpaceDim, 1> Goal_P,
-                      Eigen::Matrix<double, SpaceDim, 1> CircleP, Eigen::Matrix<double, SpaceDim, 1> CircleV,
-                      double Radius, Eigen::Matrix<double, SpaceDim, 1> Goal_V = {0.0, 0.0},
+    bool SearchByHash(std::shared_ptr<const voxel_map_tool> map_ptr, SVector Start_P, SVector Start_V, SVector Goal_P,
+                      SVector Goal_V = {0.0, 0.0}, std::vector<SVector> C_Start_P = {},
+                      std::vector<SVector> C_Start_V = {}, std::vector<double> C_Radius = {},
                       const double &space_resolution = 0.5, const double &time_resolution = 0.5,
                       const double &PlanningRadius = 5.0, const double time_horizon = 10.0)
     {
         /*-------------------Init the hash grid map-------------------*/
         StateVertexPtrGrid_hash state_vertex_ptr_grid;
-        Eigen::Matrix<double, SpaceDim, 1> m_offset;
-        m_offset.head(SpaceDim) = Start_P - PlanningRadius * Eigen::Matrix<double, SpaceDim, 1>::Ones();
+        SVector m_offset;
+        m_offset.head(SpaceDim) = Start_P - PlanningRadius * SVector::Ones();
         state_vertex_ptr_grid.initGrid(space_resolution, time_resolution, m_offset);
 
         /*-------------------Init the priority queue-------------------*/
@@ -27,7 +26,7 @@ class Planner
         // Push the first element
         StateVertex *v_ptr = new StateVertex;
 
-        if (v_ptr->setState(Start_P, Start_V, map_ptr, 0.0, Goal_P, Goal_V, CircleP, CircleV, Radius) == false)
+        if (v_ptr->setState(Start_P, Start_V, map_ptr, 0.0, Goal_P, Goal_V, C_Start_P, C_Start_V, C_Radius) == false)
             return false;
 
         state_vertex_ptr_grid.insert(v_ptr->P, 0.0, v_ptr);
@@ -50,7 +49,7 @@ class Planner
                 AE_dT = v_ptr->time2go;
                 Eigen::Matrix<double, N_coeff * N_poly, SpaceDim> TempC;
                 if (AnalyticExpansion(v_ptr->P, v_ptr->V, Goal_P, Goal_V, TempC, map_ptr, AE_dT, v_ptr->time_stamp,
-                                      CircleP, CircleV, Radius) == true)
+                                      C_Start_P, C_Start_V, C_Radius) == true)
                 {
                     C = TempC;
                     v_ptr->getPathFromHere(path_points);
@@ -61,7 +60,7 @@ class Planner
             }
 
             // Expand
-            std::vector<Eigen::Matrix<double, SpaceDim, 1>> a_list;
+            std::vector<SVector> a_list;
             std::vector<double> dT_list;
             getInput(a_list, dT_list);
 
@@ -75,22 +74,21 @@ class Planner
 
                     new_v_ptr->cost2come +=
                         60000.0 *
-                        std::exp(
-                            -1.0 * 4.0 *
-                            std::max((new_v_ptr->P - CircleP - CircleV * new_v_ptr->time_stamp).norm() - Radius, 0.0));
+                        std::exp(-1.0 * 4.0 *
+                                 std::max((new_v_ptr->P - C_Start_P[0] - C_Start_V[0] * new_v_ptr->time_stamp).norm() -
+                                              C_Radius[0],
+                                          0.0));
                     new_v_ptr->f = new_v_ptr->cost2come + new_v_ptr->cost2go;
 
                     // If it's out of the planning radius or out of the time horizon or hit obstacle
                     if (((new_v_ptr->P - Start_P).norm() > PlanningRadius) || (new_v_ptr->time_stamp > time_horizon) ||
-                        (new_v_ptr->checkCollision(map_ptr, space_resolution, CircleP, CircleV, Radius) == false))
+                        (new_v_ptr->checkCollision(map_ptr, space_resolution, C_Start_P, C_Start_V, C_Radius) == false))
                     {
                         delete new_v_ptr;
                     }
                     else
                     {
-                        std::unordered_map<Eigen::Matrix<int, SpaceDim + TimeDim, 1>, StateVertex *,
-                                           matrix_hash<Eigen::Matrix<int, SpaceDim + TimeDim, 1>>>::iterator
-                            hitted_grid_iter;
+                        std::unordered_map<STVector, StateVertex *, matrix_hash<STVector>>::iterator hitted_grid_iter;
                         bool isExist =
                             state_vertex_ptr_grid.find(new_v_ptr->P, new_v_ptr->time_stamp, hitted_grid_iter);
                         if (isExist == false)
@@ -131,17 +129,17 @@ class Planner
 
         for (auto &e : DataPtrTable)
         {
-            if(e.second->status == InOpenSet)
+            if (e.second->status == InOpenSet)
             {
                 continue;
             }
 
-            double cost =
-                30.0 * e.second->cost2go +
-                // 3000.0 *
-                //     std::exp(-1.0 * 2.0 *
-                //              std::max((e.second->P - CircleP- CircleV * e.second->time_stamp).norm() - Radius, 0.0)) +
-                e.second->cost2come;
+            double cost = 30.0 * e.second->cost2go +
+                          // 3000.0 *
+                          //     std::exp(-1.0 * 2.0 *
+                          //              std::max((e.second->P - CircleP- CircleV * e.second->time_stamp).norm() -
+                          //              Radius, 0.0)) +
+                          e.second->cost2come;
             if (cost < min_cost)
             {
                 v_min_dist2goal = e.second;
@@ -154,7 +152,7 @@ class Planner
             AE_dT = 0.0;
             Eigen::Matrix<double, N_coeff * N_poly, SpaceDim> TempC;
             if (AnalyticExpansion(v_min_dist2goal->P, v_min_dist2goal->V, v_min_dist2goal->P, v_min_dist2goal->V, TempC,
-                                  map_ptr, 0.0, v_min_dist2goal->time_stamp, CircleP, CircleV, Radius) == true)
+                                  map_ptr, 0.0, v_min_dist2goal->time_stamp, C_Start_P, C_Start_V, C_Radius) == true)
             {
                 C = TempC;
                 v_min_dist2goal->getPathFromHere(path_points);
@@ -181,7 +179,9 @@ class Planner
         return true;
     }
 
-    bool checkPathCollision(std::shared_ptr<const voxel_map_tool> map_ptr, const double &resolution = 0.5)
+    bool checkPathCollision(std::shared_ptr<const voxel_map_tool> map_ptr, std::vector<SVector> C_Start_P = {},
+                            std::vector<SVector> C_Start_V = {}, std::vector<double> C_Radius = {},
+                            const double &resolution = 0.5)
     {
         if (has_path == false)
         {
@@ -190,51 +190,18 @@ class Planner
 
         for (auto ptr = path_points.begin(); ptr < path_points.cend(); ++ptr)
         {
-            if (ptr->checkCollision(map_ptr, resolution) == false)
+            if (ptr->checkCollision(map_ptr, resolution, C_Start_P, C_Start_V, C_Radius) == false)
             {
                 return false;
             }
         }
+
+        double start_time = path_points.cend()->time_stamp;
 
         const double IncreT = AE_dT / AE_CheckSteps;
         for (double t = IncreT; t < AE_dT + 1e-10; t += IncreT)
         {
-            Eigen::Matrix<double, SpaceDim, 1> current_position;
-
-            for (int i = 0; i < SpaceDim; ++i)
-                current_position(i) = C.block<N_coeff, 1>(0, i).dot(Beta(0, t));
-
-            if (map_ptr->isObsFree(current_position) == false)
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    bool checkPathCollision(std::shared_ptr<const voxel_map_tool> map_ptr, Eigen::Matrix<double, SpaceDim, 1> CircleP,
-                            Eigen::Matrix<double, SpaceDim, 1> CircleV, double Radius, const double &resolution = 0.5)
-    {
-        if (has_path == false)
-        {
-            return false;
-        }
-
-        for (auto ptr = path_points.begin(); ptr < path_points.cend(); ++ptr)
-        {
-            if (ptr->checkCollision(map_ptr, resolution, CircleP, CircleV, Radius) == false)
-            {
-                return false;
-            }
-        }
-
-        double start_time = path_points.cend()->time_stamp + path_points.cend()->dT;
-
-        const double IncreT = AE_dT / AE_CheckSteps;
-        for (double t = IncreT; t < AE_dT + 1e-10; t += IncreT)
-        {
-            Eigen::Matrix<double, SpaceDim, 1> current_position;
+            SVector current_position;
 
             for (int i = 0; i < SpaceDim; ++i)
                 current_position(i) = C.block<N_coeff, 1>(0, i).dot(Beta(0, t));
@@ -244,9 +211,12 @@ class Planner
                 return false;
             }
 
-            if ((current_position - CircleP - CircleV * (start_time + t)).norm() < Radius)
+            for (int i = 0; i < N_obs; ++i)
             {
-                return false;
+                if ((current_position - C_Start_P[i] - C_Start_V[i] * (start_time + t)).norm() < C_Radius[i])
+                {
+                    return false;
+                }
             }
         }
 
@@ -258,31 +228,22 @@ class Planner
     Eigen::Matrix<double, N_coeff * N_poly, SpaceDim> C; // C: the last section of the path
     double AE_dT;
 
-    void getInput(std::vector<Eigen::Matrix<double, SpaceDim, 1>> &a_list, std::vector<double> &dT_list);
+    void getInput(std::vector<SVector> &a_list, std::vector<double> &dT_list);
 
     Eigen::Vector4d Beta(const unsigned int d, const double &t);
 
-    bool AnalyticExpansion(const Eigen::Matrix<double, SpaceDim, 1> &Start_P,
-                           const Eigen::Matrix<double, SpaceDim, 1> &Start_V,
-                           const Eigen::Matrix<double, SpaceDim, 1> &End_P,
-                           const Eigen::Matrix<double, SpaceDim, 1> &End_V,
-                           Eigen::Matrix<double, N_coeff * N_poly, SpaceDim> &C,
-                           std::shared_ptr<const voxel_map_tool> map_ptr, double UseAE_dT);
-    bool AnalyticExpansion(const Eigen::Matrix<double, SpaceDim, 1> &Start_P,
-                           const Eigen::Matrix<double, SpaceDim, 1> &Start_V,
-                           const Eigen::Matrix<double, SpaceDim, 1> &End_P,
-                           const Eigen::Matrix<double, SpaceDim, 1> &End_V,
+    bool AnalyticExpansion(const SVector &Start_P, const SVector &Start_V, const SVector &End_P, const SVector &End_V,
                            Eigen::Matrix<double, N_coeff * N_poly, SpaceDim> &C,
                            std::shared_ptr<const voxel_map_tool> map_ptr, double UseAE_dT, double start_time,
-                           Eigen::Matrix<double, SpaceDim, 1> CircleP, Eigen::Matrix<double, SpaceDim, 1> CircleV,
-                           double Radius);
+                           std::vector<SVector> C_Start_P = {}, std::vector<SVector> C_Start_V = {},
+                           std::vector<double> C_Radius = {});
     bool has_path = false;
 };
 
-inline void Planner::getInput(std::vector<Eigen::Matrix<double, SpaceDim, 1>> &a_list, std::vector<double> &dT_list)
+inline void Planner::getInput(std::vector<SVector> &a_list, std::vector<double> &dT_list)
 {
-    Eigen::Matrix<double, SpaceDim, 1> a;
-    const Eigen::Matrix<double, SpaceDim, 1> IncreA = 2 * max_a / (a_steps - 1);
+    SVector a;
+    const SVector IncreA = 2 * max_a / (a_steps - 1);
     for (a(0) = -max_a(0); a(0) < max_a(0) + 1e-10; a(0) += IncreA(0))
     {
         for (a(1) = -max_a(1); a(1) < max_a(1) + 1e-10; a(1) += IncreA(1))
@@ -320,55 +281,11 @@ inline Eigen::Vector4d Planner::Beta(const unsigned int d, const double &t)
     }
 }
 
-inline bool Planner::AnalyticExpansion(const Eigen::Matrix<double, SpaceDim, 1> &Start_P,
-                                       const Eigen::Matrix<double, SpaceDim, 1> &Start_V,
-                                       const Eigen::Matrix<double, SpaceDim, 1> &End_P,
-                                       const Eigen::Matrix<double, SpaceDim, 1> &End_V,
-                                       Eigen::Matrix<double, N_coeff * N_poly, SpaceDim> &C,
-                                       std::shared_ptr<const voxel_map_tool> map_ptr, double UseAE_dT)
-{
-    Eigen::Matrix<double, N_coeff * N_poly, N_coeff * N_poly> M;
-    Eigen::Matrix<double, N_poly * N_coeff, SpaceDim> D;
-
-    M.block<1, N_coeff>(0, 0) = Beta(0, 0);
-    M.block<1, N_coeff>(1, 0) = Beta(1, 0);
-
-    M.block<1, N_coeff>(N_coeff * N_poly - 2, N_coeff * N_poly - N_coeff) = Beta(0, UseAE_dT);
-    M.block<1, N_coeff>(N_coeff * N_poly - 1, N_coeff * N_poly - N_coeff) = Beta(1, UseAE_dT);
-
-    D.block<1, SpaceDim>(0, 0) = Start_P;
-    D.block<1, SpaceDim>(1, 0) = Start_V;
-
-    D.block<1, SpaceDim>(N_coeff * N_poly - 2, 0) = End_P;
-    D.block<1, SpaceDim>(N_coeff * N_poly - 1, 0) = End_V;
-
-    C = M.inverse() * D;
-
-    const double IncreT = UseAE_dT / AE_CheckSteps + 0.05;
-    for (double t = IncreT; t < UseAE_dT + 1e-10; t += IncreT)
-    {
-        Eigen::Matrix<double, SpaceDim, 1> current_position;
-
-        for (int i = 0; i < SpaceDim; ++i)
-            current_position(i) = C.block<N_coeff, 1>(0, i).dot(Beta(0, t));
-
-        if (map_ptr->isObsFree(current_position) == false)
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-inline bool Planner::AnalyticExpansion(const Eigen::Matrix<double, SpaceDim, 1> &Start_P,
-                                       const Eigen::Matrix<double, SpaceDim, 1> &Start_V,
-                                       const Eigen::Matrix<double, SpaceDim, 1> &End_P,
-                                       const Eigen::Matrix<double, SpaceDim, 1> &End_V,
-                                       Eigen::Matrix<double, N_coeff * N_poly, SpaceDim> &C,
+inline bool Planner::AnalyticExpansion(const SVector &Start_P, const SVector &Start_V, const SVector &End_P,
+                                       const SVector &End_V, Eigen::Matrix<double, N_coeff * N_poly, SpaceDim> &C,
                                        std::shared_ptr<const voxel_map_tool> map_ptr, double UseAE_dT,
-                                       double start_time, Eigen::Matrix<double, SpaceDim, 1> CircleP,
-                                       Eigen::Matrix<double, SpaceDim, 1> CircleV, double Radius)
+                                       double start_time, std::vector<SVector> C_Start_P,
+                                       std::vector<SVector> C_Start_V, std::vector<double> C_Radius)
 {
     Eigen::Matrix<double, N_coeff * N_poly, N_coeff * N_poly> M;
     Eigen::Matrix<double, N_poly * N_coeff, SpaceDim> D;
@@ -390,7 +307,7 @@ inline bool Planner::AnalyticExpansion(const Eigen::Matrix<double, SpaceDim, 1> 
     const double IncreT = UseAE_dT / AE_CheckSteps + 0.05;
     for (double t = IncreT; t < UseAE_dT + 1e-10; t += IncreT)
     {
-        Eigen::Matrix<double, SpaceDim, 1> current_position;
+        SVector current_position;
 
         for (int i = 0; i < SpaceDim; ++i)
             current_position(i) = C.block<N_coeff, 1>(0, i).dot(Beta(0, t));
@@ -400,9 +317,12 @@ inline bool Planner::AnalyticExpansion(const Eigen::Matrix<double, SpaceDim, 1> 
             return false;
         }
 
-        if ((current_position - CircleP - CircleV * (start_time + t)).norm() < Radius)
+        for (int i = 0; i < N_obs; ++i)
         {
-            return false;
+            if ((current_position - C_Start_P[i] - C_Start_V[i] * (start_time + t)).norm() < C_Radius[i])
+            {
+                return false;
+            }
         }
     }
 
