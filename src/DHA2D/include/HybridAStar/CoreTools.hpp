@@ -19,7 +19,7 @@ inline constexpr int AE_CheckSteps = 15;
 
 inline constexpr double MaxAE_Dist = 1.5;
 
-inline constexpr unsigned int TimeDim = 1;
+inline constexpr unsigned int TimeDim = 0;
 static_assert(TimeDim == 0 || TimeDim == 1, "TimeDim must be 0 or 1");
 
 inline constexpr unsigned int SpaceDim = 2;
@@ -28,8 +28,8 @@ typedef Eigen::Matrix<double, SpaceDim, 1> SVector;
 typedef Eigen::Matrix<int, SpaceDim + TimeDim, 1> STVector;
 
 inline const SVector V_max = {10.0, 10.0};
-inline const SVector max_a{10.0, 10.0};
-inline constexpr double a_steps = 11;
+inline const SVector max_a{5.0, 5.0};
+inline constexpr double a_steps = 5;
 inline constexpr double dT_steps = 2;
 
 static_assert(a_steps >= 2, "a_steps should be >= 2");
@@ -69,11 +69,15 @@ struct StateVertex
 
     char status;
 
+    bool isFrontier = true; 
+
     std::multimap<double, StateVertex *>::iterator MultimapIt;
 
     StateVertex()
     {
+        isFrontier = true;
     }
+    
     bool simForward(StateVertex &prev, const SVector &_at_1, const double &_dT, SVector Goal_P, SVector Goal_V);
 
     bool checkCollision(std::shared_ptr<const voxel_map_tool> map_ptr, const double map_resolution,

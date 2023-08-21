@@ -42,6 +42,10 @@ class Planner
             v_ptr->status = InClosedSet;
             OpenSet.erase(OpenSet.begin());
 
+            // Mark it's Predecessor as not the frontier node
+            if(v_ptr->prev_ptr != nullptr)
+                v_ptr->prev_ptr->isFrontier = false;
+
             // Check if we can directly connect the goal from the current point
             const double Dist2Goal = (v_ptr->P - Goal_P).norm();
             if (Dist2Goal < MaxAE_Dist)
@@ -121,17 +125,12 @@ class Planner
 
         for (auto &e : DataPtrTable)
         {
-            if (e.second->status == InOpenSet)
+            if (e.second->status == InOpenSet || e.second->isFrontier == false)
             {
                 continue;
             }
 
-            double cost = 30.0 * e.second->cost2go +
-                          // 3000.0 *
-                          //     std::exp(-1.0 * 2.0 *
-                          //              std::max((e.second->P - CircleP- CircleV * e.second->time_stamp).norm() -
-                          //              Radius, 0.0)) +
-                          e.second->cost2come;
+            double cost = 30.0 * e.second->cost2go + e.second->cost2come;
             if (cost < min_cost)
             {
                 v_min_dist2goal = e.second;
