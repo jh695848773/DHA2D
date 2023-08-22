@@ -347,19 +347,21 @@ void Task::setScene1()
     };
 
     /*---------------Set Obs---------------*/
-    for (double d = 0; d < map_y_size / 3; d += 1)
+    for (double d = 1.5; d < map_y_size / 4; d += 1)
         SetInfla(2.5, d);
 
-    for (double d = 1.5; d < map_x_size / 3; d += 1)
-        SetInfla(d, map_y_size - 3.0);
+    for (double d = 0; d < map_x_size / 3; d += 1)
+        SetInfla(d, map_y_size - 3.5);
 
-    for (double d = 0; d < map_y_size / 3; d += 1)
+    for (double d = 0; d < map_x_size / 3; d += 1)
+        SetInfla(d, 3.5);
+
+    for (double d = 1.5; d < map_y_size / 3; d += 1)
         SetInfla(map_x_size - 3.0, map_y_size - d - 0.5);
 
-    for (double d = 1.5; d < map_x_size / 3; d += 1)
-        SetInfla(map_x_size - d - 0.5, 2.5);
 
-    SetInfla(map_x_size / 2, map_y_size / 2);
+
+    SetInfla(map_x_size - 3.5, 3.5);
     SceneFlag = 1;
 }
 

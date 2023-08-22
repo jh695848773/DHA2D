@@ -19,7 +19,7 @@ inline constexpr int AE_CheckSteps = 15;
 
 inline constexpr double MaxAE_Dist = 1.5;
 
-inline constexpr unsigned int TimeDim = 0;
+inline constexpr unsigned int TimeDim = 1;
 static_assert(TimeDim == 0 || TimeDim == 1, "TimeDim must be 0 or 1");
 
 inline constexpr unsigned int SpaceDim = 2;
@@ -34,7 +34,7 @@ inline constexpr double dT_steps = 2;
 
 static_assert(a_steps >= 2, "a_steps should be >= 2");
 
-inline constexpr double time_weight = 10.0;
+inline constexpr double time_weight = 5.0;
 
 inline constexpr char InOpenSet = 1;
 inline constexpr char InClosedSet = 2;
@@ -347,7 +347,7 @@ inline bool StateVertex::checkCollision(std::shared_ptr<const voxel_map_tool> ma
             isCollision = true;
             return false;
         }
-        cost2come += 3000.0 * std::exp(-1.0 * 4.0 * std::max(Dist2C, 0.0));
+        cost2come += 3000.0 * std::exp(-1.0 * 3.5 * std::max(Dist2C, 0.0));
     }
 
     /*-------------------If no parent, just return-------------------*/
@@ -428,7 +428,7 @@ inline bool StateVertex::checkCollision(std::shared_ptr<const voxel_map_tool> ma
                 return false;
             }
 
-            cost2come += 3000.0 * std::exp(-1.0 * 4.0 * std::max(Dist2C, 0.0));
+            cost2come += 3000.0 * std::exp(-1.0 * 3.5 * std::max(Dist2C, 0.0));
         }
     }
 
