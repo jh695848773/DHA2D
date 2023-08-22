@@ -19,7 +19,7 @@ inline constexpr int AE_CheckSteps = 15;
 
 inline constexpr double MaxAE_Dist = 1.5;
 
-inline constexpr unsigned int TimeDim = 1;
+inline constexpr unsigned int TimeDim = 0;
 static_assert(TimeDim == 0 || TimeDim == 1, "TimeDim must be 0 or 1");
 
 inline constexpr unsigned int SpaceDim = 2;
@@ -45,7 +45,7 @@ inline constexpr unsigned int N_poly = 1;
 
 inline constexpr double tie_breaker = 1.0 + 1.0 / 10000;
 
-inline int N_obs = 1;
+inline int N_obs;
 
 struct StateVertex
 {
@@ -329,6 +329,7 @@ inline bool StateVertex::checkCollision(std::shared_ptr<const voxel_map_tool> ma
                                         std::vector<double> C_Radius)
 
 {
+    const double a = 0.3;
     /*-------------------Checking End Point-------------------*/
     if (map_ptr->isObsFree(P) == false)
     {
@@ -339,7 +340,8 @@ inline bool StateVertex::checkCollision(std::shared_ptr<const voxel_map_tool> ma
 
     for (int i = 0; i < N_obs; ++i)
     {
-        double Dist2C = (P - C_Start_P[i] - C_Start_V[i] * time_stamp).norm() - C_Radius[i];
+        double Dist2C =
+            (P - C_Start_P[i] - (C_Start_V[i] / a) * (1 - std::exp(-1.0 * a * time_stamp))).norm() - C_Radius[i];
         if (Dist2C < 0)
         {
             isCollision = true;
@@ -417,7 +419,9 @@ inline bool StateVertex::checkCollision(std::shared_ptr<const voxel_map_tool> ma
         for (int i = 0; i < N_obs; ++i)
         {
             double Dist2C =
-                (CurrP - C_Start_P[i] - C_Start_V[i] * (prev_ptr->time_stamp + CurrDT)).norm() - C_Radius[i];
+                (P - C_Start_P[i] - (C_Start_V[i] / a) * (1 - std::exp(-1.0 * a * prev_ptr->time_stamp + CurrDT)))
+                    .norm() -
+                C_Radius[i];
             if (Dist2C < 0)
             {
                 isCollision = true;

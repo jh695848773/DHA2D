@@ -15,6 +15,7 @@ class Planner
                       const double &time_resolution = 0.5, const double &PlanningRadius = 5.0,
                       const double time_horizon = 10.0)
     {
+        N_obs = C_Start_P.size();
         /*-------------------Init the hash grid map-------------------*/
         StateVertexPtrGrid_hash state_vertex_ptr_grid;
         SVector m_offset;
@@ -37,7 +38,7 @@ class Planner
 
         std::clock_t c_start = std::clock();
 
-        while (OpenSet.empty() == false && 1000.0 * (std::clock() - c_start) / CLOCKS_PER_SEC < 50)
+        while (OpenSet.empty() == false && 1000.0 * (std::clock() - c_start) / CLOCKS_PER_SEC < 10)
         {
             // Pop the first element
             v_ptr = OpenSet.begin()->second;
@@ -128,15 +129,37 @@ class Planner
         double min_cost = 1e10;
         StateVertex *v_min_dist2goal = nullptr;
 
+        std::vector<double> time_stamp_table;
         for (auto &e : DataPtrTable)
         {
             if (e.second->status == InOpenSet || e.second->isFrontier == false)
+                continue;
+            time_stamp_table.push_back(e.second->time_stamp);
+        }
+
+        std::sort(time_stamp_table.begin(), time_stamp_table.end(), std::greater<double>());
+        double top_perc_time_stamp = time_stamp_table[0.29 * time_stamp_table.size() + 1];
+
+        for (auto &e : DataPtrTable)
+        {
+
+            if (e.second->status == InOpenSet || e.second->isFrontier == false)
+                continue;
+
+            if (e.second->time_stamp < top_perc_time_stamp)
             {
                 continue;
             }
 
-            double cost = 0.5 * e.second->cost2goal + e.second->cost2come +
-                          3000.0 * std::exp(-1.0 * 2.5 * std::max(e.second->time_stamp, 0.0));
+            double cost = 0.5 * e.second->cost2goal + e.second->cost2come;
+
+            // for (int i = 0; i < N_obs; ++i)
+            // {
+            //     double Dist2C =
+            //         (e.second->P - C_Start_P[i] - C_Start_V[i] * (e.second->time_stamp)).norm() - C_Radius[i];
+
+            //     cost += 6000.0 * std::exp(-1.0 * 4.0 * std::max(Dist2C, 0.0));
+            // }
 
             if (cost < min_cost)
             {

@@ -35,7 +35,7 @@ class voxel_map_tool
     bool isObsFree(const Eigen::Vector2d &pt) const;
     uint8_t getCost(const double coord_x, const double coord_y) const;
     uint8_t getCost(const Eigen::Vector2d &pt) const;
-    void roundBoundary();
+    void encircleBoundary();
 
     void vis_map() const;
 
@@ -162,7 +162,7 @@ inline bool voxel_map_tool::setObs(const double coord_x, const double coord_y)
     return true;
 }
 
-inline void voxel_map_tool::roundBoundary()
+inline void voxel_map_tool::encircleBoundary()
 {
     int idx_x = 0;
     int idx_y = 0;
