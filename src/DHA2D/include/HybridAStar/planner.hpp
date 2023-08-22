@@ -8,11 +8,12 @@ namespace HybridAStar
 class Planner
 {
   public:
-    bool SearchByHash(std::shared_ptr<const voxel_map_tool> map_ptr, SVector Start_P, SVector Start_V, SVector Goal_P,
-                      SVector Goal_V = {0.0, 0.0}, std::vector<SVector> C_Start_P = {},
-                      std::vector<SVector> C_Start_V = {}, std::vector<double> C_Radius = {},
-                      const double &space_resolution = 0.5, const double &time_resolution = 0.5,
-                      const double &PlanningRadius = 5.0, const double time_horizon = 10.0)
+    bool SearchByHash(std::shared_ptr<const voxel_map_tool> map_ptr, SVector Start_P, SVector Start_V,
+                      std::shared_ptr<SVector> &Goal_P_ptr, std::shared_ptr<SVector> &Goal_V_ptr,
+                      std::vector<SVector> C_Start_P = {}, std::vector<SVector> C_Start_V = {},
+                      std::vector<double> C_Radius = {}, const double &space_resolution = 0.5,
+                      const double &time_resolution = 0.5, const double &PlanningRadius = 5.0,
+                      const double time_horizon = 10.0)
     {
         /*-------------------Init the hash grid map-------------------*/
         StateVertexPtrGrid_hash state_vertex_ptr_grid;
@@ -26,7 +27,8 @@ class Planner
         // Push the first element
         StateVertex *v_ptr = new StateVertex;
 
-        if (v_ptr->setState(Start_P, Start_V, map_ptr, 0.0, Goal_P, Goal_V, C_Start_P, C_Start_V, C_Radius) == false)
+        if (v_ptr->setState(Start_P, Start_V, map_ptr, 0.0, Goal_P_ptr, Goal_V_ptr, C_Start_P, C_Start_V, C_Radius) ==
+            false)
             return false;
 
         state_vertex_ptr_grid.insert(v_ptr->P, 0.0, v_ptr);
@@ -42,24 +44,27 @@ class Planner
             v_ptr->status = InClosedSet;
             OpenSet.erase(OpenSet.begin());
 
-            // Mark it's Predecessor as not the frontier node
-            if(v_ptr->prev_ptr != nullptr)
+            // Mark its Predecessor as the non-frontier node
+            if (v_ptr->prev_ptr != nullptr)
                 v_ptr->prev_ptr->isFrontier = false;
 
             // Check if we can directly connect the goal from the current point
-            const double Dist2Goal = (v_ptr->P - Goal_P).norm();
-            if (Dist2Goal < MaxAE_Dist)
+            if (Goal_P_ptr != nullptr && Goal_V_ptr != nullptr)
             {
-                AE_dT = v_ptr->time2go;
-                Eigen::Matrix<double, N_coeff * N_poly, SpaceDim> TempC;
-                if (AnalyticExpansion(v_ptr->P, v_ptr->V, Goal_P, Goal_V, TempC, map_ptr, AE_dT, v_ptr->time_stamp,
-                                      C_Start_P, C_Start_V, C_Radius) == true)
+                const double Dist2Goal = (v_ptr->P - *Goal_P_ptr).norm();
+                if (Dist2Goal < MaxAE_Dist)
                 {
-                    C = TempC;
-                    v_ptr->getPathFromHere(path_points);
+                    AE_dT = v_ptr->time2go;
+                    Eigen::Matrix<double, N_coeff * N_poly, SpaceDim> TempC;
+                    if (AnalyticExpansion(v_ptr->P, v_ptr->V, *Goal_P_ptr, *Goal_V_ptr, TempC, map_ptr, AE_dT,
+                                          v_ptr->time_stamp, C_Start_P, C_Start_V, C_Radius) == true)
+                    {
+                        C = TempC;
+                        v_ptr->getPathFromHere(path_points);
 
-                    has_path = true;
-                    return true;
+                        has_path = true;
+                        return true;
+                    }
                 }
             }
 
@@ -74,7 +79,7 @@ class Planner
                 {
                     StateVertex *new_v_ptr = new StateVertex;
 
-                    new_v_ptr->simForward(*v_ptr, a, used_dT, Goal_P, Goal_V);
+                    new_v_ptr->simForward(*v_ptr, a, used_dT, Goal_P_ptr, Goal_V_ptr);
 
                     // If it's out of the planning radius or out of the time horizon or hit obstacle
                     if (((new_v_ptr->P - Start_P).norm() > PlanningRadius) || (new_v_ptr->time_stamp > time_horizon) ||
@@ -130,7 +135,9 @@ class Planner
                 continue;
             }
 
-            double cost = 30.0 * e.second->cost2go + e.second->cost2come;
+            double cost = 0.5 * e.second->cost2goal + e.second->cost2come +
+                          3000.0 * std::exp(-1.0 * 2.5 * std::max(e.second->time_stamp, 0.0));
+
             if (cost < min_cost)
             {
                 v_min_dist2goal = e.second;
@@ -149,6 +156,10 @@ class Planner
                 v_min_dist2goal->getPathFromHere(path_points);
 
                 has_path = true;
+
+                Goal_P_ptr = std::make_shared<SVector>(v_min_dist2goal->P);
+                Goal_V_ptr = std::make_shared<SVector>(v_min_dist2goal->V);
+
                 return true;
             }
         }

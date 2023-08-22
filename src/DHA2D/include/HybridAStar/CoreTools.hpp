@@ -19,7 +19,7 @@ inline constexpr int AE_CheckSteps = 15;
 
 inline constexpr double MaxAE_Dist = 1.5;
 
-inline constexpr unsigned int TimeDim = 0;
+inline constexpr unsigned int TimeDim = 1;
 static_assert(TimeDim == 0 || TimeDim == 1, "TimeDim must be 0 or 1");
 
 inline constexpr unsigned int SpaceDim = 2;
@@ -27,7 +27,7 @@ inline constexpr unsigned int SpaceDim = 2;
 typedef Eigen::Matrix<double, SpaceDim, 1> SVector;
 typedef Eigen::Matrix<int, SpaceDim + TimeDim, 1> STVector;
 
-inline const SVector V_max = {10.0, 10.0};
+inline const SVector V_max = {5.0, 5.0};
 inline const SVector max_a{5.0, 5.0};
 inline constexpr double a_steps = 5;
 inline constexpr double dT_steps = 2;
@@ -60,7 +60,7 @@ struct StateVertex
 
     double time_stamp;
 
-    double cost2go;
+    double cost2goal;
     double cost2come;
     double time2go;
     double f;
@@ -69,7 +69,7 @@ struct StateVertex
 
     char status;
 
-    bool isFrontier = true; 
+    bool isFrontier = true;
 
     std::multimap<double, StateVertex *>::iterator MultimapIt;
 
@@ -77,16 +77,17 @@ struct StateVertex
     {
         isFrontier = true;
     }
-    
-    bool simForward(StateVertex &prev, const SVector &_at_1, const double &_dT, SVector Goal_P, SVector Goal_V);
+
+    bool simForward(StateVertex &prev, const SVector &_at_1, const double &_dT, std::shared_ptr<SVector> Goal_P_ptr,
+                    std::shared_ptr<SVector> Goal_V_ptr);
 
     bool checkCollision(std::shared_ptr<const voxel_map_tool> map_ptr, const double map_resolution,
                         std::vector<SVector> C_Start_P = {}, std::vector<SVector> C_Start_V = {},
                         std::vector<double> C_Radius = {});
 
     bool setState(const SVector &Curr_P, const SVector &Curr_V, std::shared_ptr<const voxel_map_tool> map_ptr,
-                  const double &_time_stamp, SVector Goal_P, SVector Goal_V, std::vector<SVector> C_Start_P = {},
-                  std::vector<SVector> C_Start_V = {}, std::vector<double> C_Radius = {});
+                  const double &_time_stamp, std::shared_ptr<SVector> Goal_P_ptr, std::shared_ptr<SVector> Goal_V_ptr,
+                  std::vector<SVector> C_Start_P, std::vector<SVector> C_Start_V, std::vector<double> C_Radius);
 
     void getPathFromHere(std::vector<StateVertex> &path_points);
 
@@ -245,8 +246,8 @@ inline bool StateVertexPtrGrid_hash::initGrid(const double &_space_resolution, c
     return true;
 }
 
-inline bool StateVertex::simForward(StateVertex &prev, const SVector &_at_1, const double &_dT, SVector Goal_P,
-                                    SVector Goal_V)
+inline bool StateVertex::simForward(StateVertex &prev, const SVector &_at_1, const double &_dT,
+                                    std::shared_ptr<SVector> Goal_P_ptr, std::shared_ptr<SVector> Goal_V_ptr)
 {
     dT = _dT;
     at_1 = _at_1;
@@ -303,16 +304,22 @@ inline bool StateVertex::simForward(StateVertex &prev, const SVector &_at_1, con
 
     cost2come = prev.cost2come + (at_1.norm() + time_weight) * dT; // Estimated energy + time wasted
 
-    Eigen::Matrix<double, 2 * SpaceDim, 1> StartState(2 * SpaceDim);
-    StartState.head(SpaceDim) = P;
-    StartState.tail(SpaceDim) = V;
-    Eigen::Matrix<double, 2 * SpaceDim, 1> GoalState(2 * SpaceDim);
-    GoalState.head(SpaceDim) = Goal_P;
-    GoalState.tail(SpaceDim) = Goal_V;
+    if (Goal_P_ptr != nullptr && Goal_V_ptr != nullptr)
+    {
+        Eigen::Matrix<double, 2 * SpaceDim, 1> StartState(2 * SpaceDim);
+        StartState.head(SpaceDim) = P;
+        StartState.tail(SpaceDim) = V;
+        Eigen::Matrix<double, 2 * SpaceDim, 1> GoalState(2 * SpaceDim);
+        GoalState.head(SpaceDim) = *Goal_P_ptr;
+        GoalState.tail(SpaceDim) = *Goal_V_ptr;
 
-    cost2go = estimateHeuristic(StartState, GoalState, time2go);
-
-    f = cost2come + cost2go;
+        cost2goal = estimateHeuristic(StartState, GoalState, time2go);
+    }
+    else
+    {
+        cost2goal = 0.0;
+    }
+    f = cost2come + cost2goal;
 
     return true;
 }
@@ -328,6 +335,7 @@ inline bool StateVertex::checkCollision(std::shared_ptr<const voxel_map_tool> ma
         isCollision = true;
         return false;
     }
+    cost2come += map_ptr->getCost(P);
 
     for (int i = 0; i < N_obs; ++i)
     {
@@ -344,7 +352,7 @@ inline bool StateVertex::checkCollision(std::shared_ptr<const voxel_map_tool> ma
     if (prev_ptr == nullptr)
     {
         isCollision = false;
-        f = cost2come + cost2go;
+        f = cost2come + cost2goal;
         return true;
     }
 
@@ -404,6 +412,7 @@ inline bool StateVertex::checkCollision(std::shared_ptr<const voxel_map_tool> ma
             isCollision = true;
             return false;
         }
+        cost2come += map_ptr->getCost(P);
 
         for (int i = 0; i < N_obs; ++i)
         {
@@ -420,14 +429,15 @@ inline bool StateVertex::checkCollision(std::shared_ptr<const voxel_map_tool> ma
     }
 
     isCollision = false;
-    f = cost2come + cost2go;
+    f = cost2come + cost2goal;
     return true;
 }
 
 inline bool StateVertex::setState(const SVector &Curr_P, const SVector &Curr_V,
                                   std::shared_ptr<const voxel_map_tool> map_ptr, const double &_time_stamp,
-                                  SVector Goal_P, SVector Goal_V, std::vector<SVector> C_Start_P,
-                                  std::vector<SVector> C_Start_V, std::vector<double> C_Radius)
+                                  std::shared_ptr<SVector> Goal_P_ptr, std::shared_ptr<SVector> Goal_V_ptr,
+                                  std::vector<SVector> C_Start_P, std::vector<SVector> C_Start_V,
+                                  std::vector<double> C_Radius)
 {
     at_1 = SVector::Zero();
     prev_ptr = nullptr;
@@ -453,16 +463,23 @@ inline bool StateVertex::setState(const SVector &Curr_P, const SVector &Curr_V,
 
     cost2come = 0.0; // T + ax^2 + ay^2 + az^2
 
-    Eigen::Matrix<double, 2 * SpaceDim, 1> StartState(2 * SpaceDim);
-    StartState.head(SpaceDim) = P;
-    StartState.tail(SpaceDim) = V;
-    Eigen::Matrix<double, 2 * SpaceDim, 1> GoalState(2 * SpaceDim);
-    GoalState.head(SpaceDim) = Goal_P;
-    GoalState.tail(SpaceDim) = Goal_V;
+    if (Goal_P_ptr != nullptr && Goal_V_ptr != nullptr)
+    {
+        Eigen::Matrix<double, 2 * SpaceDim, 1> StartState(2 * SpaceDim);
+        StartState.head(SpaceDim) = P;
+        StartState.tail(SpaceDim) = V;
+        Eigen::Matrix<double, 2 * SpaceDim, 1> GoalState(2 * SpaceDim);
+        GoalState.head(SpaceDim) = *Goal_P_ptr;
+        GoalState.tail(SpaceDim) = *Goal_V_ptr;
 
-    cost2go = estimateHeuristic(StartState, GoalState, time2go);
+        cost2goal = estimateHeuristic(StartState, GoalState, time2go);
+    }
+    else
+    {
+        cost2goal = 0.0;
+    }
 
-    f = cost2come + cost2go;
+    f = cost2come + cost2goal;
 
     dT = 0.0;
 
@@ -704,12 +721,12 @@ inline SVector V_A_Traj::getVelocity(double t)
 
     if (t > time_table.back() + C_dur - 1e-10)
     {
-        t = time_table.back() + C_dur - 1e-10;
+        return SVector::Zero();
     }
 
     if (time_table.back() == 0.0 && C_dur == 0.0)
     {
-        return path_points.at(0).V;
+        return SVector::Zero();
     }
 
     if (t < time_table.back())

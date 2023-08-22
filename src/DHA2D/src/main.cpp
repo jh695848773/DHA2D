@@ -19,6 +19,8 @@ class Task
         MapPtr = std::make_shared<voxel_map_tool>(_nh, _map_vis_name);
         // MapPtr = std::make_shared<voxel_map_tool>();
         MapPtr->initGridMap(space_resolution, Eigen::Vector2d{map_x_size, map_y_size}, Eigen::Vector2d::Zero());
+        MapPtr->roundBoundary();
+
         setObs_sub = _nh.subscribe("/initialpose", 10, &Task::setObsCB, this);
         setGoal_sub = _nh.subscribe("/move_base_simple/goal", 10, &Task::setGoalCB, this);
         SimulationLoopTimer = _nh.createTimer(ros::Duration(DT), &Task::SimulationLoop, this);
@@ -64,7 +66,7 @@ class Task
     Eigen::Matrix<double, HybridAStar::SpaceDim, 1> Curr_Obs_V =
         Eigen::Matrix<double, HybridAStar::SpaceDim, 1>::Zero();
 
-    double Obs_radius = 3.0;
+    double Obs_radius = 1.5;
     double Obs_V_End_max = 1.0;
     double safety_rate = 1.0;
 
@@ -79,7 +81,7 @@ int main(int argc, char *argv[])
     ros::NodeHandle nh;
 
     Task task(nh);
-    task.setScene0();
+    task.setScene1();
 
     ros::spin();
 
@@ -104,6 +106,12 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
         if (has_goal == false)
             return;
 
+    // auto Goal_P_ptr = std::make_shared<HybridAStar::SVector>(Goal_P);
+    // auto Goal_V_ptr = std::make_shared<HybridAStar::SVector>(0, 0);
+
+    std::shared_ptr<HybridAStar::SVector> Goal_P_ptr = nullptr;
+    std::shared_ptr<HybridAStar::SVector> Goal_V_ptr = nullptr;
+
     /*----------------Planning----------------*/
     if (++planner_frame_passing > N_planner_frame_passing &&
         (planner_frame_passing > 5 * N_planner_frame_passing || new_goal || !has_path ||
@@ -117,10 +125,11 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
 
         std::clock_t c_start = std::clock();
 
-        bool isSuccess =
-            planner.SearchByHash(MapPtr, Curr_P, Curr_V, Goal_P, HybridAStar::SVector{0.0, 0.0},
-                                 std::vector<HybridAStar::SVector>{Curr_Obs_P},
-                                 std::vector<HybridAStar::SVector>{Curr_Obs_V}, std::vector<double>{Obs_radius});
+        HybridAStar::SVector Goal_V = {0, 0};
+
+        bool isSuccess = planner.SearchByHash(
+            MapPtr, Curr_P, Curr_V, Goal_P_ptr, Goal_V_ptr, std::vector<HybridAStar::SVector>{Curr_Obs_P},
+            std::vector<HybridAStar::SVector>{Curr_Obs_V}, std::vector<double>{Obs_radius});
 
         std::clock_t c_end = std::clock();
         auto time_elapsed_ms = 1000.0 * (c_end - c_start) / CLOCKS_PER_SEC;
@@ -252,6 +261,7 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
 
     Obs_CurrentP_pub.publish(obs_point_marker);
 
+    if (Goal_P_ptr != nullptr)
     {
         visualization_msgs::Marker goal_point_marker;
 
@@ -272,8 +282,8 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
 
         goal_point_marker.id = 0;
         goal_point_marker.ns = "trajectory";
-        goal_point_marker.pose.position.x = Goal_P.x();
-        goal_point_marker.pose.position.y = Goal_P.y();
+        goal_point_marker.pose.position.x = Goal_P_ptr->x();
+        goal_point_marker.pose.position.y = Goal_P_ptr->y();
         goal_point_marker.pose.position.z = 0.0;
 
         GoalP_pub.publish(goal_point_marker);
@@ -321,17 +331,17 @@ void Task::setScene1()
     };
 
     /*---------------Set Obs---------------*/
-    for (double d = 0; d < map_y_size / 3; d += 1)
-        SetInfla(1.5, d);
+    for (double d = 1.5; d < map_y_size / 3; d += 1)
+        SetInfla(2.5, d);
 
-    for (double d = 0; d < map_x_size / 3; d += 1)
-        SetInfla(d, map_y_size - 2.0);
+    for (double d = 1.5; d < map_x_size / 3; d += 1)
+        SetInfla(d, map_y_size - 3.0);
 
-    for (double d = 0; d < map_y_size / 3; d += 1)
-        SetInfla(map_x_size - 2.0, map_y_size - d - 0.5);
+    for (double d = 1.5; d < map_y_size / 3; d += 1)
+        SetInfla(map_x_size - 3.0, map_y_size - d - 0.5);
 
-    for (double d = 0; d < map_x_size / 3; d += 1)
-        SetInfla(map_x_size - d - 0.5, 1.5);
+    for (double d = 1.5; d < map_x_size / 3; d += 1)
+        SetInfla(map_x_size - d - 0.5, 2.5);
 
     SetInfla(map_x_size / 2, map_y_size / 2);
     SceneFlag = 1;
@@ -348,7 +358,7 @@ void Task::GoalSettingScene1()
         goal_flag = 2;
     }
 
-    if ((Curr_P - Goal_P).norm() < 0.1)
+    if ((Curr_P - Goal_P).norm() < 0.5)
     {
         if (goal_flag == 1)
         {

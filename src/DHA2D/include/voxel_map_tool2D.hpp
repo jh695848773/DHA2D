@@ -33,6 +33,9 @@ class voxel_map_tool
     bool isObsFree(const double coord_x, const double coord_y) const;
     bool isObsFree(int array_idx) const;
     bool isObsFree(const Eigen::Vector2d &pt) const;
+    uint8_t getCost(const double coord_x, const double coord_y) const;
+    uint8_t getCost(const Eigen::Vector2d &pt) const;
+    void roundBoundary();
 
     void vis_map() const;
 
@@ -107,7 +110,7 @@ class voxel_map_tool
     double x_offest, y_offest;
 
     static constexpr uint8_t Unoccupied = 0;
-    static constexpr uint8_t Occupied = 1;
+    static constexpr uint8_t Occupied = 99;
     ros::Publisher vis_pub;
 
   private:
@@ -145,7 +148,87 @@ inline bool voxel_map_tool::setObs(const double coord_x, const double coord_y)
 
     data[GridIdx2Array(idx_x, idx_y)] = Occupied;
 
+    for (int i = -1; i <= 1; ++i)
+    {
+        for (int j = -1; j <= 1; ++j)
+        {
+            if (idx_x + i < 0 || idx_y + j >= X_SIZE || idx_y < 0 || idx_y >= Y_SIZE)
+                continue;
+            data[GridIdx2Array(idx_x + i, idx_y + j)] =
+                10 > data[GridIdx2Array(idx_x + i, idx_y + j)] ? 10 : data[GridIdx2Array(idx_x + i, idx_y + j)];
+        }
+    }
+
     return true;
+}
+
+inline void voxel_map_tool::roundBoundary()
+{
+    int idx_x = 0;
+    int idx_y = 0;
+    idx_x = 0;
+    for (idx_y = 0; idx_y < Y_SIZE; ++idx_y)
+    {
+        data[GridIdx2Array(idx_x, idx_y)] = Occupied;
+        for (int i = -1; i <= 1; ++i)
+        {
+            for (int j = -1; j <= 1; ++j)
+            {
+                if (idx_x + i < 0 || idx_y + j >= X_SIZE || idx_y < 0 || idx_y >= Y_SIZE)
+                    continue;
+                data[GridIdx2Array(idx_x + i, idx_y + j)] =
+                    10 > data[GridIdx2Array(idx_x + i, idx_y + j)] ? 10 : data[GridIdx2Array(idx_x + i, idx_y + j)];
+            }
+        }
+    }
+
+    idx_y = Y_SIZE - 1;
+    for (idx_x = 0; idx_x < X_SIZE; ++idx_x)
+    {
+        data[GridIdx2Array(idx_x, idx_y)] = Occupied;
+        for (int i = -1; i <= 1; ++i)
+        {
+            for (int j = -1; j <= 1; ++j)
+            {
+                if (idx_x + i < 0 || idx_y + j >= X_SIZE || idx_y < 0 || idx_y >= Y_SIZE)
+                    continue;
+                data[GridIdx2Array(idx_x + i, idx_y + j)] =
+                    10 > data[GridIdx2Array(idx_x + i, idx_y + j)] ? 10 : data[GridIdx2Array(idx_x + i, idx_y + j)];
+            }
+        }
+    }
+
+    idx_x = X_SIZE - 1;
+    for (idx_y = Y_SIZE - 1; idx_y >= 0; --idx_y)
+    {
+        data[GridIdx2Array(idx_x, idx_y)] = Occupied;
+        for (int i = -1; i <= 1; ++i)
+        {
+            for (int j = -1; j <= 1; ++j)
+            {
+                if (idx_x + i < 0 || idx_y + j >= X_SIZE || idx_y < 0 || idx_y >= Y_SIZE)
+                    continue;
+                data[GridIdx2Array(idx_x + i, idx_y + j)] =
+                    10 > data[GridIdx2Array(idx_x + i, idx_y + j)] ? 10 : data[GridIdx2Array(idx_x + i, idx_y + j)];
+            }
+        }
+    }
+
+    idx_y = 0;
+    for (idx_x = X_SIZE - 1; idx_x >= 0; --idx_x)
+    {
+        data[GridIdx2Array(idx_x, idx_y)] = Occupied;
+        for (int i = -1; i <= 1; ++i)
+        {
+            for (int j = -1; j <= 1; ++j)
+            {
+                if (idx_x + i < 0 || idx_y + j >= X_SIZE || idx_y < 0 || idx_y >= Y_SIZE)
+                    continue;
+                data[GridIdx2Array(idx_x + i, idx_y + j)] =
+                    10 > data[GridIdx2Array(idx_x + i, idx_y + j)] ? 10 : data[GridIdx2Array(idx_x + i, idx_y + j)];
+            }
+        }
+    }
 }
 
 inline bool voxel_map_tool::isObsFree(const double coord_x, const double coord_y) const
@@ -154,12 +237,12 @@ inline bool voxel_map_tool::isObsFree(const double coord_x, const double coord_y
     int idx_y = (coord_y - y_offest) * inv_resolution;
 
     return (idx_x >= 0 && idx_x < X_SIZE && idx_y >= 0 && idx_y < Y_SIZE &&
-            (data[GridIdx2Array(idx_x, idx_y)] == Unoccupied));
+            (data[GridIdx2Array(idx_x, idx_y)] != Occupied));
 }
 
 inline bool voxel_map_tool::isObsFree(int array_idx) const
 {
-    return (array_idx >= 0 && array_idx < XY_SIZE) && (data[array_idx] == Unoccupied);
+    return (array_idx >= 0 && array_idx < XY_SIZE) && (data[array_idx] != Occupied);
 }
 
 inline bool voxel_map_tool::isObsFree(const Eigen::Vector2d &pt) const
@@ -168,7 +251,29 @@ inline bool voxel_map_tool::isObsFree(const Eigen::Vector2d &pt) const
     int idx_y = (pt(1) - y_offest) * inv_resolution;
 
     return (idx_x >= 0 && idx_x < X_SIZE && idx_y >= 0 && idx_y < Y_SIZE &&
-            (data[GridIdx2Array(idx_x, idx_y)] == Unoccupied));
+            (data[GridIdx2Array(idx_x, idx_y)] != Occupied));
+}
+
+inline uint8_t voxel_map_tool::getCost(const double coord_x, const double coord_y) const
+{
+    int idx_x = (coord_x - x_offest) * inv_resolution;
+    int idx_y = (coord_y - y_offest) * inv_resolution;
+
+    if (idx_x >= 0 && idx_x < X_SIZE && idx_y >= 0 && idx_y < Y_SIZE)
+        return data[GridIdx2Array(idx_x, idx_y)];
+    else
+        return Occupied;
+}
+
+inline uint8_t voxel_map_tool::getCost(const Eigen::Vector2d &pt) const
+{
+    int idx_x = (pt(0) - x_offest) * inv_resolution;
+    int idx_y = (pt(1) - y_offest) * inv_resolution;
+
+    if (idx_x >= 0 && idx_x < X_SIZE && idx_y >= 0 && idx_y < Y_SIZE)
+        return data[GridIdx2Array(idx_x, idx_y)];
+    else
+        return Occupied;
 }
 
 inline void voxel_map_tool::vis_map() const
@@ -194,14 +299,16 @@ inline void voxel_map_tool::vis_map() const
     {
         for (int i = 0; i < X_SIZE; ++i)
         {
-            if (data[GridIdx2Array(i, j)] == Occupied)
-            {
-                msg2pub.data.push_back(99);
-            }
-            else
-            {
-                msg2pub.data.push_back(0);
-            }
+            // if (data[GridIdx2Array(i, j)] == Occupied)
+            // {
+            //     msg2pub.data.push_back(99);
+            // }
+            // else
+            // {
+            //     msg2pub.data.push_back(0);
+            // }
+
+            msg2pub.data.push_back(data[GridIdx2Array(i, j)]);
         }
     }
 
