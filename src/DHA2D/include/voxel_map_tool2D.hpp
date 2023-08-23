@@ -155,7 +155,7 @@ inline bool voxel_map_tool::setObs(const double coord_x, const double coord_y)
             if (idx_x + i < 0 || idx_y + j >= X_SIZE || idx_y < 0 || idx_y >= Y_SIZE)
                 continue;
             data[GridIdx2Array(idx_x + i, idx_y + j)] =
-                10 > data[GridIdx2Array(idx_x + i, idx_y + j)] ? 10 : data[GridIdx2Array(idx_x + i, idx_y + j)];
+                30 > data[GridIdx2Array(idx_x + i, idx_y + j)] ? 30 : data[GridIdx2Array(idx_x + i, idx_y + j)];
         }
     }
 
@@ -174,10 +174,10 @@ inline void voxel_map_tool::encircleBoundary()
         {
             for (int j = -1; j <= 1; ++j)
             {
-                if (idx_x + i < 0 || idx_y + j >= X_SIZE || idx_y < 0 || idx_y >= Y_SIZE)
+                if (idx_x + i < 0 || idx_x + i >= X_SIZE || idx_y + j < 0 || idx_y + j >= Y_SIZE)
                     continue;
                 data[GridIdx2Array(idx_x + i, idx_y + j)] =
-                    10 > data[GridIdx2Array(idx_x + i, idx_y + j)] ? 10 : data[GridIdx2Array(idx_x + i, idx_y + j)];
+                    30 > data[GridIdx2Array(idx_x + i, idx_y + j)] ? 30 : data[GridIdx2Array(idx_x + i, idx_y + j)];
             }
         }
     }
@@ -190,10 +190,10 @@ inline void voxel_map_tool::encircleBoundary()
         {
             for (int j = -1; j <= 1; ++j)
             {
-                if (idx_x + i < 0 || idx_y + j >= X_SIZE || idx_y < 0 || idx_y >= Y_SIZE)
+                if (idx_x + i < 0 || idx_x + i >= X_SIZE || idx_y + j < 0 || idx_y + j >= Y_SIZE)
                     continue;
                 data[GridIdx2Array(idx_x + i, idx_y + j)] =
-                    10 > data[GridIdx2Array(idx_x + i, idx_y + j)] ? 10 : data[GridIdx2Array(idx_x + i, idx_y + j)];
+                    30 > data[GridIdx2Array(idx_x + i, idx_y + j)] ? 30 : data[GridIdx2Array(idx_x + i, idx_y + j)];
             }
         }
     }
@@ -206,10 +206,10 @@ inline void voxel_map_tool::encircleBoundary()
         {
             for (int j = -1; j <= 1; ++j)
             {
-                if (idx_x + i < 0 || idx_y + j >= X_SIZE || idx_y < 0 || idx_y >= Y_SIZE)
+                if (idx_x + i < 0 || idx_x + i >= X_SIZE || idx_y + j < 0 || idx_y + j >= Y_SIZE)
                     continue;
                 data[GridIdx2Array(idx_x + i, idx_y + j)] =
-                    10 > data[GridIdx2Array(idx_x + i, idx_y + j)] ? 10 : data[GridIdx2Array(idx_x + i, idx_y + j)];
+                    30 > data[GridIdx2Array(idx_x + i, idx_y + j)] ? 30 : data[GridIdx2Array(idx_x + i, idx_y + j)];
             }
         }
     }
@@ -222,10 +222,10 @@ inline void voxel_map_tool::encircleBoundary()
         {
             for (int j = -1; j <= 1; ++j)
             {
-                if (idx_x + i < 0 || idx_y + j >= X_SIZE || idx_y < 0 || idx_y >= Y_SIZE)
+                if (idx_x + i < 0 || idx_x + i >= X_SIZE || idx_y + j < 0 || idx_y + j >= Y_SIZE)
                     continue;
                 data[GridIdx2Array(idx_x + i, idx_y + j)] =
-                    10 > data[GridIdx2Array(idx_x + i, idx_y + j)] ? 10 : data[GridIdx2Array(idx_x + i, idx_y + j)];
+                    30 > data[GridIdx2Array(idx_x + i, idx_y + j)] ? 30 : data[GridIdx2Array(idx_x + i, idx_y + j)];
             }
         }
     }

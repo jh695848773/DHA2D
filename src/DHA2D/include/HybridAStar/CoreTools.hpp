@@ -19,7 +19,7 @@ inline constexpr int AE_CheckSteps = 15;
 
 inline constexpr double MaxAE_Dist = 1.5;
 
-inline constexpr unsigned int TimeDim = 1;
+inline constexpr unsigned int TimeDim = 0;
 static_assert(TimeDim == 0 || TimeDim == 1, "TimeDim must be 0 or 1");
 
 inline constexpr unsigned int SpaceDim = 2;
@@ -46,6 +46,13 @@ inline constexpr unsigned int N_poly = 1;
 inline constexpr double tie_breaker = 1.0 + 1.0 / 10000;
 
 inline int N_obs;
+
+inline double calculateDist2C(const SVector &P, const SVector &C_Start_P, const SVector &C_Start_V,
+                              const double &C_Radius, const double &t)
+{
+    double k = 0.3;
+    return std::max((P - C_Start_P - (C_Start_V / k) * (1 - std::exp(-1.0 * k * t))).norm() - C_Radius, 0.0);
+}
 
 struct StateVertex
 {
@@ -329,25 +336,23 @@ inline bool StateVertex::checkCollision(std::shared_ptr<const voxel_map_tool> ma
                                         std::vector<double> C_Radius)
 
 {
-    const double a = 0.3;
     /*-------------------Checking End Point-------------------*/
     if (map_ptr->isObsFree(P) == false)
     {
         isCollision = true;
         return false;
     }
-    cost2come += map_ptr->getCost(P);
+    cost2come += 10 * map_ptr->getCost(P);
 
     for (int i = 0; i < N_obs; ++i)
     {
-        double Dist2C =
-            (P - C_Start_P[i] - (C_Start_V[i] / a) * (1 - std::exp(-1.0 * a * time_stamp))).norm() - C_Radius[i];
-        if (Dist2C < 0)
+        double Dist2C = calculateDist2C(P, C_Start_P[i], C_Start_V[i], C_Radius[i], time_stamp);
+        if (Dist2C <= 0)
         {
             isCollision = true;
             return false;
         }
-        cost2come += 3000.0 * std::exp(-1.0 * 3.5 * std::max(Dist2C, 0.0));
+        cost2come += 3000.0 * std::exp(-1.0 * 3.5 * Dist2C);
     }
 
     /*-------------------If no parent, just return-------------------*/
@@ -414,21 +419,18 @@ inline bool StateVertex::checkCollision(std::shared_ptr<const voxel_map_tool> ma
             isCollision = true;
             return false;
         }
-        cost2come += map_ptr->getCost(P);
+        cost2come += 10 * map_ptr->getCost(P);
 
         for (int i = 0; i < N_obs; ++i)
         {
-            double Dist2C =
-                (P - C_Start_P[i] - (C_Start_V[i] / a) * (1 - std::exp(-1.0 * a * prev_ptr->time_stamp + CurrDT)))
-                    .norm() -
-                C_Radius[i];
-            if (Dist2C < 0)
+            double Dist2C = calculateDist2C(P, C_Start_P[i], C_Start_V[i], C_Radius[i], prev_ptr->time_stamp + t);
+            if (Dist2C <= 0)
             {
                 isCollision = true;
                 return false;
             }
 
-            cost2come += 3000.0 * std::exp(-1.0 * 3.5 * std::max(Dist2C, 0.0));
+            cost2come += 3000.0 * std::exp(-1.0 * 3.5 * Dist2C);
         }
     }
 

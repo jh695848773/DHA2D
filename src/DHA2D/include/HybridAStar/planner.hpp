@@ -60,11 +60,20 @@ class Planner
                     if (AnalyticExpansion(v_ptr->P, v_ptr->V, *Goal_P_ptr, *Goal_V_ptr, TempC, map_ptr, AE_dT,
                                           v_ptr->time_stamp, C_Start_P, C_Start_V, C_Radius) == true)
                     {
-                        C = TempC;
-                        v_ptr->getPathFromHere(path_points);
+                        bool isCollision = false;
+                        for (double t = 0; t < 3; t += 0.2)
+                            for (int i = 0; i < N_obs; ++i)
+                                if (calculateDist2C(*Goal_P_ptr, C_Start_P[i], C_Start_V[i], C_Radius[i], t) <= 1.0)
+                                    isCollision = true;
 
-                        has_path = true;
-                        return true;
+                        if (isCollision == false)
+                        {
+                            C = TempC;
+                            v_ptr->getPathFromHere(path_points);
+
+                            has_path = true;
+                            return true;
+                        }
                     }
                 }
             }
@@ -151,7 +160,7 @@ class Planner
                 continue;
             }
 
-            double cost = 0.5 * e.second->cost2goal + e.second->cost2come;
+            double cost = 3.0 * e.second->cost2goal + e.second->cost2come;
 
             // for (int i = 0; i < N_obs; ++i)
             // {
@@ -238,7 +247,7 @@ class Planner
 
             for (int i = 0; i < N_obs; ++i)
             {
-                if ((current_position - C_Start_P[i] - C_Start_V[i] * (start_time + t)).norm() < C_Radius[i])
+                if (calculateDist2C(current_position, C_Start_P[i], C_Start_V[i], C_Radius[i], start_time + t) <= 0.0)
                 {
                     return false;
                 }
@@ -344,7 +353,7 @@ inline bool Planner::AnalyticExpansion(const SVector &Start_P, const SVector &St
 
         for (int i = 0; i < N_obs; ++i)
         {
-            if ((current_position - C_Start_P[i] - C_Start_V[i] * (start_time + t)).norm() < C_Radius[i])
+            if (calculateDist2C(current_position, C_Start_P[i], C_Start_V[i], C_Radius[i], start_time + t) <= 0)
             {
                 return false;
             }

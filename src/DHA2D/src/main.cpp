@@ -5,8 +5,8 @@
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 
 double space_resolution = 0.5;
-double map_x_size = 10.0; // m
-double map_y_size = 10.0; // m
+double map_x_size = 15.0; // m
+double map_y_size = 15.0; // m
 
 constexpr double DT = 0.01;
 
@@ -17,12 +17,13 @@ class Task
         : traj(_nh, _path_vis_name), obstacle_traj{{_nh, "obs_traj1"}, {_nh, "obs_traj2"}, {_nh, "obs_traj3"}},
           Curr_Obs_P{
               {map_x_size / 2, map_y_size / 2}, {map_x_size / 2, map_y_size / 2}, {map_x_size / 2, map_y_size / 2}},
-          Curr_Obs_V{{0, 0}, {0, 0}, {0, 0}}, Obs_radius{1.0, 1.5, 1.25}
+          Curr_Obs_V{{0, 0}, {0, 0}, {0, 0}}, Obs_radius{1.0, 1.25, 1.5}
     //   Curr_Obs_P{{map_x_size / 2, map_y_size / 2}}, Curr_Obs_V{{0, 0}}, Obs_radius{1.5}
     {
         MapPtr = std::make_shared<voxel_map_tool>(_nh, _map_vis_name);
         // MapPtr = std::make_shared<voxel_map_tool>();
         MapPtr->initGridMap(space_resolution, Eigen::Vector2d{map_x_size, map_y_size}, Eigen::Vector2d::Zero());
+
         MapPtr->encircleBoundary();
 
         setObs_sub = _nh.subscribe("/initialpose", 10, &Task::setObsCB, this);
@@ -52,7 +53,6 @@ class Task
     bool has_path = false;
     bool new_goal = false;
     bool collision_flag = false;
-    bool has_obs_traj = false;
 
     HybridAStar::SVector Curr_P;
     HybridAStar::SVector Curr_V;
@@ -91,16 +91,17 @@ int main(int argc, char *argv[])
 }
 
 int N_planner_frame_passing = 10;
-int N_obs_frame_passing = 150;
+std::vector<int> N_obs_frame_passing = {100, 150, 200};
 
 void Task::SimulationLoop(const ros::TimerEvent &event)
 {
     MapPtr->vis_map();
 
     static double t_on_path = 0;
-    static std::vector<double> obs_t_on_path;
+    static std::vector<double> obs_t_on_path = {0, 0, 0};
     static int planner_frame_passing = 0;
-    static int obs_frame_passing = 0;
+    static std::vector<int> obs_frame_passing = {0, 0, 0};
+    static std::vector<bool> has_obs_traj = {false, false, false};
 
     if (SceneFlag == 1)
         GoalSettingScene1();
@@ -108,11 +109,11 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
         if (has_goal == false)
             return;
 
-    // auto Goal_P_ptr = std::make_shared<HybridAStar::SVector>(Goal_P);
-    // auto Goal_V_ptr = std::make_shared<HybridAStar::SVector>(0, 0);
+    auto Goal_P_ptr = std::make_shared<HybridAStar::SVector>(map_x_size / 2, map_y_size / 2);
+    auto Goal_V_ptr = std::make_shared<HybridAStar::SVector>(0, 0);
 
-    std::shared_ptr<HybridAStar::SVector> Goal_P_ptr = nullptr;
-    std::shared_ptr<HybridAStar::SVector> Goal_V_ptr = nullptr;
+    // std::shared_ptr<HybridAStar::SVector> Goal_P_ptr = nullptr;
+    // std::shared_ptr<HybridAStar::SVector> Goal_V_ptr = nullptr;
 
     auto expandObs = [](std::vector<double> Obs_radius, double safety_rate) {
         std::vector<double> expanded_Obs_radius;
@@ -135,6 +136,7 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
         std::clock_t c_start = std::clock();
 
         HybridAStar::SVector Goal_V = {0, 0};
+        ;
 
         bool isSuccess =
             planner.SearchByHash(MapPtr, Curr_P, Curr_V, Goal_P_ptr, Goal_V_ptr, Curr_Obs_P, Curr_Obs_V, Obs_radius);
@@ -158,15 +160,13 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
             std::cout << "Planning Failed." << std::endl;
         }
     }
-
     /*----------------Update Obs movement----------------*/
-    if (++obs_frame_passing > N_obs_frame_passing)
+    for (int i = 0; i < Curr_Obs_P.size(); ++i)
     {
-        obs_frame_passing = 0;
-        obs_t_on_path.clear();
-        for (int i = 0; i < Curr_Obs_P.size(); ++i)
+        if (++obs_frame_passing[i] > N_obs_frame_passing[i])
         {
-            std::vector<double> time_vector = {N_obs_frame_passing * DT * 2.0};
+            obs_frame_passing[i] = 0;
+            std::vector<double> time_vector = {N_obs_frame_passing[i] * DT * 2.0};
             std::vector<HybridAStar::SVector> waypoints = {};
             std::vector<HybridAStar::SVector> start_pv = {Curr_Obs_P[i], Curr_Obs_V[i]};
             HybridAStar::SVector Goal_Obs_P;
@@ -183,16 +183,16 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
 
             obstacle_traj[i].calculateTraj(time_vector, waypoints, start_pv, end_pv, 0.0);
             obstacle_traj[i].vis_traj();
-            obs_t_on_path.push_back(0);
+            obs_t_on_path[i] = 0;
+            has_obs_traj[i] = true;
         }
-        has_obs_traj = true;
     }
-
     /*----------------Simulation----------------*/
     // // Move the Obs
-    if (has_obs_traj == true)
+
+    for (int i = 0; i < Curr_Obs_P.size(); ++i)
     {
-        for (int i = 0; i < Curr_Obs_P.size(); ++i)
+        if (has_obs_traj[i] == true)
         {
             obs_t_on_path[i] += DT;
             Curr_Obs_P[i] = obstacle_traj[i].getPosition(obs_t_on_path[i]);
@@ -203,7 +203,7 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
     // Collision check
     collision_flag = false;
     for (int i = 0; i < Curr_Obs_P.size(); ++i)
-        if ((Curr_P - Curr_Obs_P[i]).norm() <= Obs_radius[i] * 1.05)
+        if ((Curr_P - Curr_Obs_P[i]).norm() <= Obs_radius[i] * 1.05 || MapPtr->isObsFree(Curr_P) == false)
             collision_flag = true;
 
     // Control the path
@@ -347,21 +347,24 @@ void Task::setScene1()
     };
 
     /*---------------Set Obs---------------*/
-    for (double d = 1.5; d < map_y_size / 4; d += 1)
+    for (double d = 2.5; d < map_y_size / 4 - 0.5; d += 1)
         SetInfla(2.5, d);
 
-    for (double d = 0; d < map_x_size / 3; d += 1)
-        SetInfla(d, map_y_size - 3.5);
+    for (double d = 0; d < map_x_size / 2; d += 1)
+        SetInfla(d, map_y_size - 6.0);
 
-    for (double d = 0; d < map_x_size / 3; d += 1)
-        SetInfla(d, 3.5);
+    for (double d = 0; d < map_x_size / 2; d += 1)
+        SetInfla(d, 6.0);
 
-    for (double d = 1.5; d < map_y_size / 3; d += 1)
+    SetInfla(5.0, map_y_size - 3);
+
+    for (double d = 2.5; d < map_y_size / 2; d += 1)
         SetInfla(map_x_size - 3.0, map_y_size - d - 0.5);
 
-
-
     SetInfla(map_x_size - 3.5, 3.5);
+
+    SetInfla(map_x_size / 2, 3.0);
+
     SceneFlag = 1;
 }
 
