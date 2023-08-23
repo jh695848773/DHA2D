@@ -14,10 +14,18 @@ class Task
 {
   public:
     Task(ros::NodeHandle &_nh, std::string _map_vis_name = "vis_map", std::string _path_vis_name = "path")
-        : traj(_nh, _path_vis_name), obstacle_traj{{_nh, "obs_traj1"}, {_nh, "obs_traj2"}, {_nh, "obs_traj3"}},
-          Curr_Obs_P{
-              {map_x_size / 2, map_y_size / 2}, {map_x_size / 2, map_y_size / 2}, {map_x_size / 2, map_y_size / 2}},
-          Curr_Obs_V{{0, 0}, {0, 0}, {0, 0}}, Obs_radius{1.0, 1.25, 1.5}
+        : traj(_nh, _path_vis_name),
+          obstacle_traj{{_nh, "obs_traj1"}, {_nh, "obs_traj2"}, {_nh, "obs_traj3"}, {_nh, "obs_traj4"},
+                        {_nh, "obs_traj4"}, {_nh, "obs_traj4"}, {_nh, "obs_traj5"}},
+          Curr_Obs_P{{5, 4},
+                     {3, 3},
+                     {1.5, map_y_size / 2},
+                     {4, map_y_size - 3},
+                     {map_y_size / 2, map_y_size - 3},
+                     {map_x_size - 3, map_y_size - 3},
+                     {map_x_size - 3, 4}},
+          Curr_Obs_V{{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}},
+          Obs_radius{1.0, 1.25, 1.25, 1.25, 1.50, 1.50, 2.0}
     //   Curr_Obs_P{{map_x_size / 2, map_y_size / 2}}, Curr_Obs_V{{0, 0}}, Obs_radius{1.5}
     {
         MapPtr = std::make_shared<voxel_map_tool>(_nh, _map_vis_name);
@@ -32,7 +40,7 @@ class Task
         CurrentP_pub = _nh.advertise<visualization_msgs::Marker>("robot_position", 10);
         Obs_CurrentP_pub = _nh.advertise<visualization_msgs::MarkerArray>("obs_position", 10);
         GoalP_pub = _nh.advertise<visualization_msgs::Marker>("goal_position", 10);
-        Curr_P = HybridAStar::SVector::Ones() * 0.5;
+        Curr_P = HybridAStar::SVector{map_x_size / 2 - 1.5, map_y_size / 2 + 0.25};
         Curr_V = HybridAStar::SVector::Zero();
     };
 
@@ -52,7 +60,8 @@ class Task
     bool has_goal = false;
     bool has_path = false;
     bool new_goal = false;
-    bool collision_flag = false;
+    bool obs_collision_flag = false;
+    bool static_collision_flag = false;
 
     HybridAStar::SVector Curr_P;
     HybridAStar::SVector Curr_V;
@@ -70,7 +79,7 @@ class Task
     std::vector<double> Obs_radius;
 
     double Obs_V_End_max = 1.0;
-    double safety_rate = 1.0;
+    double safety_rate = 1.25;
 
     int SceneFlag = 0;
 
@@ -91,17 +100,17 @@ int main(int argc, char *argv[])
 }
 
 int N_planner_frame_passing = 10;
-std::vector<int> N_obs_frame_passing = {100, 150, 200};
+std::vector<int> N_obs_frame_passing = {150, 150, 200, 200, 250, 250, 250};
 
 void Task::SimulationLoop(const ros::TimerEvent &event)
 {
     MapPtr->vis_map();
 
     static double t_on_path = 0;
-    static std::vector<double> obs_t_on_path = {0, 0, 0};
+    static std::vector<double> obs_t_on_path = {0, 0, 0, 0, 0, 0, 0};
     static int planner_frame_passing = 0;
-    static std::vector<int> obs_frame_passing = {0, 0, 0};
-    static std::vector<bool> has_obs_traj = {false, false, false};
+    static std::vector<int> obs_frame_passing = {0, 0, 0, 0, 0, 0, 0};
+    static std::vector<bool> has_obs_traj = {false, false, false, false, false, false, false};
 
     if (SceneFlag == 1)
         GoalSettingScene1();
@@ -109,8 +118,22 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
         if (has_goal == false)
             return;
 
-    auto Goal_P_ptr = std::make_shared<HybridAStar::SVector>(map_x_size / 2, map_y_size / 2);
+    static bool last_collision_flag = false;
+    static int collision_time = 0;
+    static double time_pass = 0;
+    static double energy_used = 0.0;
+    static int planning_times = 0;
+    static double total_planning_time = 0.0;
+    static int loop_times = 0;
+    static double total_dist2goal = 0.0;
+
+    loop_times += 1;
+
+    auto Goal_P_ptr = std::make_shared<HybridAStar::SVector>(map_x_size / 2 - 1.5, map_y_size / 2 + 0.25);
     auto Goal_V_ptr = std::make_shared<HybridAStar::SVector>(0, 0);
+
+    if (Goal_P_ptr != nullptr)
+        total_dist2goal += (Curr_P - *Goal_P_ptr).norm();
 
     // std::shared_ptr<HybridAStar::SVector> Goal_P_ptr = nullptr;
     // std::shared_ptr<HybridAStar::SVector> Goal_V_ptr = nullptr;
@@ -136,14 +159,17 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
         std::clock_t c_start = std::clock();
 
         HybridAStar::SVector Goal_V = {0, 0};
-        ;
 
         bool isSuccess =
             planner.SearchByHash(MapPtr, Curr_P, Curr_V, Goal_P_ptr, Goal_V_ptr, Curr_Obs_P, Curr_Obs_V, Obs_radius);
 
+        planning_times += 1;
+
         std::clock_t c_end = std::clock();
         auto time_elapsed_ms = 1000.0 * (c_end - c_start) / CLOCKS_PER_SEC;
         std::cout << "CPU time used for Hybrid A*: " << time_elapsed_ms << " ms\n";
+
+        total_planning_time += time_elapsed_ms;
 
         if (isSuccess)
         {
@@ -189,6 +215,49 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
     }
     /*----------------Simulation----------------*/
     // // Move the Obs
+    time_pass += DT;
+    std::cout << "time_pass: " << time_pass / 60 << std::endl;
+
+    std::cout << "ave planning time (ms): " << total_planning_time / planning_times << std::endl;
+
+    if (Goal_P_ptr != nullptr)
+        std::cout << "ave dist2goal: " << total_dist2goal / loop_times << std::endl;
+
+    if (time_pass / 60 > 5 - DT && time_pass / 60 < 5 + DT)
+    {
+        std::cout << "Press Enter to Continue";
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    }
+
+    if (time_pass / 60 > 10 - DT && time_pass / 60 < 10 + DT)
+    {
+        std::cout << "Press Enter to Continue";
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    }
+
+    if (time_pass / 60 > 15 - DT && time_pass / 60 < 15 + DT)
+    {
+        std::cout << "Press Enter to Continue";
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    }
+
+    if (time_pass / 60 > 20 - DT && time_pass / 60 < 20 + DT)
+    {
+        std::cout << "Press Enter to Continue";
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    }
+
+    if (time_pass / 60 > 25 - DT && time_pass / 60 < 25 + DT)
+    {
+        std::cout << "Press Enter to Continue";
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    }
+
+    if (time_pass / 60 > 30 - DT && time_pass / 60 < 30 + DT)
+    {
+        std::cout << "Press Enter to Continue";
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    }
 
     for (int i = 0; i < Curr_Obs_P.size(); ++i)
     {
@@ -201,17 +270,44 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
     }
 
     // Collision check
-    collision_flag = false;
-    for (int i = 0; i < Curr_Obs_P.size(); ++i)
-        if ((Curr_P - Curr_Obs_P[i]).norm() <= Obs_radius[i] * 1.05 || MapPtr->isObsFree(Curr_P) == false)
-            collision_flag = true;
+    obs_collision_flag = false;
+    if (last_collision_flag == false)
+    {
+        for (int i = 0; i < Curr_Obs_P.size(); ++i)
+            if ((Curr_P - Curr_Obs_P[i]).norm() <= Obs_radius[i] + 0.1)
+                obs_collision_flag = true;
+    }
+    else
+    {
+        for (int i = 0; i < Curr_Obs_P.size(); ++i)
+            if ((Curr_P - Curr_Obs_P[i]).norm() <= Obs_radius[i] + 0.5)
+                obs_collision_flag = true;
+    }
 
+    static_collision_flag = false;
+    if (!MapPtr->isObsFree(Curr_P))
+    {
+        static_collision_flag = true;
+    }
+
+    if (last_collision_flag == false && (obs_collision_flag == true || static_collision_flag == true))
+    {
+        collision_time += 1;
+    }
+    std::cout << "collision_times: " << collision_time << std::endl;
+
+    last_collision_flag = obs_collision_flag || static_collision_flag;
+
+    //  || MapPtr->isObsFree(Curr_P) == false
     // Control the path
-    if (has_path == true && collision_flag == false)
+    if (has_path == true && obs_collision_flag == false)
     {
         t_on_path += DT;
         Curr_P = traj.getPosition(t_on_path);
         Curr_V = traj.getVelocity(t_on_path);
+        auto acc = traj.getAcc(t_on_path);
+        energy_used += acc.norm() * DT;
+        std::cout << "energy_used: " << energy_used << std::endl;
     }
 
     /*----------------Visualization----------------*/
@@ -222,7 +318,7 @@ void Task::SimulationLoop(const ros::TimerEvent &event)
     point_marker.header.frame_id = "map";
     point_marker.pose.orientation.w = 1.00;
     point_marker.action = visualization_msgs::Marker::ADD;
-    if (collision_flag == false)
+    if (obs_collision_flag == false)
     {
         point_marker.color.r = 0.00;
         point_marker.color.g = 1.00;

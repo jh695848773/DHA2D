@@ -177,6 +177,7 @@ class V_A_Traj
 
     SVector getPosition(double t);
     SVector getVelocity(double t);
+    SVector getAcc(double t);
 
     bool vis_path();
 
@@ -756,6 +757,50 @@ inline SVector V_A_Traj::getVelocity(double t)
 
         for (int i = 0; i < SpaceDim; ++i)
             current_position(i) = C.block<N_coeff, 1>(0, i).dot(Beta(1, curr_sec_t));
+
+        return current_position;
+    }
+}
+
+inline SVector V_A_Traj::getAcc(double t)
+{
+    SVector current_position;
+    if (t < time_table.front() + 1e-10)
+    {
+        t = time_table.front() + 1e-10;
+    }
+
+    if (t > time_table.back() + C_dur - 1e-10)
+    {
+        return SVector::Zero();
+    }
+
+    if (time_table.back() == 0.0 && C_dur == 0.0)
+    {
+        return SVector::Zero();
+    }
+
+    if (t < time_table.back())
+    {
+        unsigned long i = 0;
+        while (i < time_table.size() - 1)
+        {
+            if (t > time_table.at(i) - 1e-10 && t < time_table.at(i + 1) + 1e-10)
+            {
+                break;
+            }
+            i += 1;
+        }
+        const double curr_sec_t = t - time_table.at(i);
+
+        return path_points.at(i + 1).at_1;
+    }
+    else
+    {
+        double curr_sec_t = t - time_table.back();
+
+        for (int i = 0; i < SpaceDim; ++i)
+            current_position(i) = C.block<N_coeff, 1>(0, i).dot(Beta(2, curr_sec_t));
 
         return current_position;
     }
